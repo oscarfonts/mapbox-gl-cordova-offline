@@ -1,0 +1,17 @@
+{
+  "name": "mapbox-gl-offline-vector-source",
+  "version": "1.0.0",
+  "description": "mapbox-gj-js custom Source Types usage example",
+  "main": "custom_geojson_source.js",
+  "scripts": {
+    "build:dev": "browserify -s CustomGeoJSONSource custom_geojson_source.js -d -o dist/mapbox-gl-custom-source.js",
+    "build": "browserify -s CustomGeoJSONSource custom_geojson_source.js -o dist/mapbox-gl-custom-source.js"
+  },
+  "keywords": [],
+  "author": "Oscar Fonts <oscar.font@geomati.co>",
+  "license": "ISC",
+  "dependencies": {
+    "webworkify": "1.4.0",
+    "mapbox-gl": "0.37.0"
+  }
+}
