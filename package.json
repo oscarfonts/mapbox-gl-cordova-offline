@@ -4,14 +4,20 @@
   "description": "mapbox-gj js custom SourceType - usage example",
   "main": "custom_geojson_source.js",
   "scripts": {
-    "build:dev": "browserify -s CustomGeoJSONSource custom_geojson_source.js -d -o dist/mapbox-gl-custom-source.js",
-    "build": "browserify -s CustomGeoJSONSource custom_geojson_source.js -o dist/mapbox-gl-custom-source.js"
+    "build": "browserify -s mapboxgl index.js -d --plugin [minifyify --map mapbox-gl-custom-source.js.map --output dist/mapbox-gl-custom-source.js.map] -o dist/mapbox-gl-custom-source.js"
   },
   "keywords": [],
   "author": "Oscar Fonts <oscar.font@geomati.co>",
   "license": "ISC",
-  "dependencies": {
-    "webworkify": "1.4.0",
-    "mapbox-gl": "0.37.0"
+  "devDependencies": {
+    "bubleify": "^0.7.0",
+    "mapbox-gl": "0.37.0",
+    "minifyify": "^7.3.5",
+    "webworkify": "1.4.0"
+  },
+  "browserify": {
+    "transform": [
+      "bubleify"
+    ]
   }
 }

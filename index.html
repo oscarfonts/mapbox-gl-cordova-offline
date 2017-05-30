@@ -4,8 +4,7 @@
     <meta charset='utf-8'/>
     <title></title>
     <meta name='viewport' content='initial-scale=1,maximum-scale=1,user-scalable=no'/>
-    <script src='https://api.mapbox.com/mapbox-gl-js/v0.37.0/mapbox-gl.js'></script>
-    <link href='https://api.mapbox.com/mapbox-gl-js/v0.37.0/mapbox-gl.css' rel='stylesheet' />
+    <link href='dist/mapbox-gl.css' rel='stylesheet' />
     <script src='dist/mapbox-gl-custom-source.js'></script>
     <style>
         body {
@@ -33,7 +32,7 @@
     map.addControl(new mapboxgl.NavigationControl());
 
     map.on('load', function () {
-        map.addSourceType('custom_geojson', CustomGeoJSONSource, function () {
+        map.addSourceType('custom_geojson', mapboxgl.SourceTypes.CustomGeoJSON, function () {
             map.addSource('comarques_source', {
                 type: 'custom_geojson',
                 data: 'https://raw.githubusercontent.com/aariste/GeoJSON-Mapas/master/comarques-compressed.geojson',
