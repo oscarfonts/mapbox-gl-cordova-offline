@@ -4,7 +4,7 @@
     <meta charset='utf-8'/>
     <title></title>
     <meta name='viewport' content='initial-scale=1,maximum-scale=1,user-scalable=no'/>
-    <link href='dist/mapbox-gl.css' rel='stylesheet' />
+    <link href='dist/mapbox-gl.css' rel='stylesheet'/>
     <script src='dist/mapbox-gl-custom-source.js'></script>
     <style>
         body {
@@ -32,6 +32,33 @@
     map.addControl(new mapboxgl.NavigationControl());
 
     map.on('load', function () {
+        map.addSourceType('custom_vector', mapboxgl.SourceTypes.CustomVectorTile, function () {
+            map.addSource('openmaptiles', {
+                type: 'custom_vector',
+                url: 'http://demo.fonts.cat:8001/data/openmaptiles.json'
+                //tiles: ['http://demo.fonts.cat:8001/data/openmaptiles/{z}/{x}/{y}.pbf']
+            });
+
+            map.addLayer({
+                "id": "water",
+                "type": "fill",
+                "source": "openmaptiles",
+                "source-layer": "water",
+                "filter": [
+                    "==",
+                    "$type",
+                    "Polygon"
+                ],
+                "layout": {
+                    "visibility": "visible"
+                },
+                "paint": {
+                    "fill-color": "rgb(0,120,180)",
+                    "fill-antialias": false
+                }
+            })
+        });
+
         map.addSourceType('custom_geojson', mapboxgl.SourceTypes.CustomGeoJSON, function () {
             map.addSource('comarques_source', {
                 type: 'custom_geojson',
@@ -50,7 +77,7 @@
                     'line-width': 2
                 }
             })
-        })
+        });
     });
 </script>
 </body>
