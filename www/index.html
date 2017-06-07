@@ -4,8 +4,8 @@
     <meta charset='utf-8'/>
     <title></title>
     <meta name='viewport' content='initial-scale=1,maximum-scale=1,user-scalable=no'/>
-    <link href='dist/mapbox-gl.css' rel='stylesheet'/>
-    <script src='dist/mapbox-gl-custom-source.js'></script>
+    <link href='mapbox-gl.css' rel='stylesheet'/>
+    <script src='mapbox-gl-cordova-mbtiles.js'></script>
     <style>
         body {
             margin: 0;
@@ -26,17 +26,17 @@
 <script>
     var map = new mapboxgl.Map({
         container: 'map',
-        style: 'http://betaserver.icgc.cat/vectortiles/estils/bt5m_nice.json'
+        style: 'data/empty.json'
     });
 
     map.addControl(new mapboxgl.NavigationControl());
 
     map.on('load', function () {
-        map.addSourceType('custom_vector', mapboxgl.SourceTypes.CustomVectorTile, function () {
+        map.addSourceType('mbtiles', mapboxgl.MbtilesSourceType, function () {
             map.addSource('openmaptiles', {
-                type: 'custom_vector',
-                url: 'http://demo.fonts.cat:8001/data/openmaptiles.json'
-                //tiles: ['http://demo.fonts.cat:8001/data/openmaptiles/{z}/{x}/{y}.pbf']
+                type: 'mbtiles',
+                tiles:['http://demo.fonts.cat:8001/data/openmaptiles/{z}/{x}/{y}.pbf']
+                //tiles: ['mbtiles:///data/barcelona_spain.mbtiles']
             });
 
             map.addLayer({
@@ -59,25 +59,6 @@
             })
         });
 
-        map.addSourceType('custom_geojson', mapboxgl.SourceTypes.CustomGeoJSON, function () {
-            map.addSource('comarques_source', {
-                type: 'custom_geojson',
-                data: 'https://raw.githubusercontent.com/aariste/GeoJSON-Mapas/master/comarques-compressed.geojson',
-                workerOptions: {
-                    'custom_option': 'custom value, to be read in custom_geojson_worker'
-                }
-            });
-
-            map.addLayer({
-                'id': 'comarques_layer',
-                'source': 'comarques_source',
-                'type': 'line',
-                'paint': {
-                    'line-color': '#FF0000',
-                    'line-width': 2
-                }
-            })
-        });
     });
 </script>
 </body>

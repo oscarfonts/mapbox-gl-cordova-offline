@@ -17,5 +17,5 @@ class CustomVectorTileWorkerSource extends VectorTileWorkerSource {
 }
 
 module.exports = function(self) {
-  self.registerWorkerSource('custom_vector', CustomVectorTileWorkerSource)
+  self.registerWorkerSource('mbtiles', CustomVectorTileWorkerSource)
 };

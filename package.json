@@ -1,13 +1,13 @@
 {
-  "name": "mapbox-gl-custom-source",
-  "version": "1.0.0",
-  "description": "mapbox-gj js custom SourceType - usage example",
-  "main": "custom_geojson_source.js",
+  "name": "mapbox-gl-cordova-mbtiles",
+  "version": "0.0.1",
+  "description": "A custom mapbox-gl build that reads vector tiles from a local mbtiles file in cordova",
+  "main": "www/mapbox-gl-cordova-mbtiles.js",
   "scripts": {
-    "build": "browserify -s mapboxgl index.js -d --plugin [minifyify --map mapbox-gl-custom-source.js.map --output dist/mapbox-gl-custom-source.js.map] -o dist/mapbox-gl-custom-source.js"
+    "build": "browserify -s mapboxgl src/index.js -d --plugin [minifyify --map mapbox-gl-cordova-mbtiles.js.map --output www/mapbox-gl-cordova-mbtiles.js.map] -o www/mapbox-gl-cordova-mbtiles.js"
   },
   "keywords": [],
-  "author": "Oscar Fonts <oscar.font@geomati.co>",
+  "author": "Oscar Fonts <oscar.fonts@geomati.co>",
   "license": "ISC",
   "devDependencies": {
     "bubleify": "^0.7.0",
