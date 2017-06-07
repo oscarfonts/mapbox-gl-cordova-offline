@@ -25,42 +25,51 @@
 
 <div id='map'></div>
 <script>
-    var map = new mapboxgl.Map({
-        container: 'map',
-        style: 'data/empty.json'
-    });
 
-    map.addControl(new mapboxgl.NavigationControl());
+    'cordova' in window ? document.addEventListener("deviceready", init, false) : init();
 
-    map.on('load', function () {
-        map.addSourceType('mbtiles', mapboxgl.MbtilesSourceType, function () {
-            map.addSource('openmaptiles', {
-                type: 'mbtiles',
-                tiles:['http://demo.fonts.cat:8001/data/openmaptiles/{z}/{x}/{y}.pbf']
-                //tiles: ['mbtiles:///data/barcelona_spain.mbtiles']
-            });
 
-            map.addLayer({
-                "id": "water",
-                "type": "fill",
-                "source": "openmaptiles",
-                "source-layer": "water",
-                "filter": [
-                    "==",
-                    "$type",
-                    "Polygon"
-                ],
-                "layout": {
-                    "visibility": "visible"
-                },
-                "paint": {
-                    "fill-color": "rgb(0,120,180)",
-                    "fill-antialias": false
-                }
-            })
+    function init() {
+        var map = new mapboxgl.Map({
+            container: 'map',
+            style: 'data/empty.json'
         });
 
-    });
+        map.addControl(new mapboxgl.NavigationControl());
+
+        map.on('load', function () {
+            map.addSourceType('mbtiles', mapboxgl.MbtilesSourceType, function () {
+                map.addSource('openmaptiles', {
+                    type: 'mbtiles',
+                    tiles:['http://demo.fonts.cat:8001/data/openmaptiles/{z}/{x}/{y}.pbf']
+                    //tiles: ['mbtiles:///data/barcelona_spain.mbtiles']
+                });
+
+                map.addLayer({
+                    "id": "water",
+                    "type": "fill",
+                    "source": "openmaptiles",
+                    "source-layer": "water",
+                    "filter": [
+                        "==",
+                        "$type",
+                        "Polygon"
+                    ],
+                    "layout": {
+                        "visibility": "visible"
+                    },
+                    "paint": {
+                        "fill-color": "rgb(0,120,180)",
+                        "fill-antialias": false
+                    }
+                })
+            });
+
+        });
+    }
+
+
+
 </script>
 </body>
 </html>

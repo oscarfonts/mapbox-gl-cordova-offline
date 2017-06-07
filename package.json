@@ -9,10 +9,16 @@
     "keywords": [],
     "author": "Oscar Fonts <oscar.fonts@geomati.co>",
     "license": "ISC",
+    "repository": {
+        "type": "git",
+        "url": "git@github.com:oscarfonts/mapbox-gl-cordova-mbtiles.git"
+    },
     "devDependencies": {
+        "browserify": "14.4.0",
         "bubleify": "0.7.0",
         "mapbox-gl": "0.37.0",
         "minifyify": "7.3.5",
+        "pako": "1.0.5",
         "webworkify": "1.4.0"
     },
     "browserify": {
