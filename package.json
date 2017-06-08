@@ -4,7 +4,9 @@
     "description": "A custom mapbox-gl build that reads vector tiles from a local mbtiles file in cordova",
     "main": "www/mapbox-gl-cordova-mbtiles.js",
     "scripts": {
-        "build": "browserify -s mapboxgl src/index.js -d --plugin [minifyify --map mapbox-gl-cordova-mbtiles.js.map --output www/mapbox-gl-cordova-mbtiles.js.map] -o www/mapbox-gl-cordova-mbtiles.js"
+        "build": "browserify -s mapboxgl src/index.js -d -o www/mapbox-gl-cordova-mbtiles.js",
+        "build:min": "browserify -s mapboxgl src/index.js -d --plugin [minifyify --map mapbox-gl-cordova-mbtiles.js.map --output www/mapbox-gl-cordova-mbtiles.js.map] -o www/mapbox-gl-cordova-mbtiles.js",
+        "watch": "watchify -s mapboxgl src/index.js -d -o www/mapbox-gl-cordova-mbtiles.js --verbose"
     },
     "keywords": [],
     "author": "Oscar Fonts <oscar.fonts@geomati.co>",
@@ -19,6 +21,7 @@
         "mapbox-gl": "0.37.0",
         "minifyify": "7.3.5",
         "pako": "1.0.5",
+        "watchify": "3.9.0",
         "webworkify": "1.4.0"
     },
     "browserify": {
