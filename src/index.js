@@ -1,5 +1,5 @@
 const mapboxgl = require('mapbox-gl/src/index');
 
-mapboxgl.MbtilesSourceType = require('./mbtiles_source');
+mapboxgl.MBTilesSource = require('./mbtiles_source');
 
 module.exports = mapboxgl;

@@ -1,99 +1,93 @@
 const VectorTileSource = require('mapbox-gl/src/source/vector_tile_source');
-const normalizeURL = require('mapbox-gl/src/util/mapbox').normalizeTileURL;
 const webworkify = require('webworkify');
-const pako = require('pako/lib/inflate');
 
 class MBTilesSource extends VectorTileSource {
     constructor(id, options, dispatcher, eventedParent) {
         super(id, options, dispatcher, eventedParent);
         this.type = "mbtiles";
+        this.db = this.openDatabase(options.name);
     }
 
-    readTile(z, x, y, callback) {
+    openDatabase(name) {
         if ('sqlitePlugin' in self) {
-            copyDatabaseFile('barcelona.mbtiles').then(function () {
-                var db = sqlitePlugin.openDatabase({name: 'barcelona.mbtiles', location: 'default'});
-                db.transaction(function (txn) {
-                    txn.executeSql('SELECT BASE64(tile_data) AS data FROM tiles WHERE zoom_level=? AND tile_column=? AND tile_row=?', [z, x, Math.pow(2,z)-y-1], function (tx, res) {
-                        var pbf_gz = convertBase64ToUint8Array(res.rows.item(0).data);
-                        var pbf = pako.inflate(pbf_gz);
-                        callback(null, {
-                            data: pbf,
-                            cacheControl: null,
-                            expires: null
-                        }); // Tile contents read
-                    });
-                }, function (error) {
-                    callback(error); // Error executing SQL
-                });
-            }).catch(function (err) {
-                callback(err); // Error copying database file
+            return this.copyDatabaseFile(name).then(function () {
+                return sqlitePlugin.openDatabase({name: name, location: 'default'});
             });
         } else {
-            callback("cordova-sqlite-ext plugin not installed"); // Required plugin not installed
+            return Promise.reject(new Error("cordova-sqlite-ext plugin not available. " +
+                "Please install the plugin and make sure this code is run after onDeviceReady event"));
+        }
+    }
+
+    copyDatabaseFile(dbName) {
+        const sourceFileName = cordova.file.applicationDirectory + 'www/data/' + dbName;
+
+        if(!('device' in self)) {
+            return Promise.reject(new Error("cordova-plugin-device not available. " +
+                "Please install the plugin and make sure this code is run after onDeviceReady event"));
         }
 
-        function convertBase64ToUint8Array(base64) {
-            var raw = self.atob(base64);
-            var rawLength = raw.length;
-            var array = new Uint8Array(new ArrayBuffer(rawLength));
-
-            for (var i = 0; i < rawLength; i++) {
-                array[i] = raw.charCodeAt(i);
-            }
-
-            return array;
-        }
-
-        function copyDatabaseFile(dbName) {
-            var sourceFileName = cordova.file.applicationDirectory + 'www/data/' + dbName;
-
-            return Promise.all([
-                new Promise(function (resolve, reject) {
-                    resolveLocalFileSystemURL(sourceFileName, resolve, reject);
-                }),
-                new Promise(function (resolve, reject) {
-                    // If android
+        return Promise.all([
+            new Promise(function (resolve, reject) {
+                resolveLocalFileSystemURL(sourceFileName, resolve, reject);
+            }),
+            new Promise(function (resolve, reject) {
+                if(device.platform === 'Android') {
                     resolveLocalFileSystemURL(cordova.file.applicationStorageDirectory, function (dir) {
                         dir.getDirectory('databases', {create: true}, function (subdir) {
                             resolve(subdir);
                         });
                     }, reject);
-                    // TODO else if ios
-                    //resolveLocalFileSystemURL(cordova.file.documentsDirectory, resolve, reject);
-                })
-            ]).then(function (files) {
-                var sourceFile = files[0];
-                var targetDir = files[1];
+                } else if(device.platform === 'iOS') {
+                    resolveLocalFileSystemURL(cordova.file.documentsDirectory, resolve, reject);
+                } else {
+                    reject("Platform not supported");
+                }
+            })
+        ]).then(function (files) {
+            const sourceFile = files[0];
+            const targetDir = files[1];
+            return new Promise(function (resolve, reject) {
+                targetDir.getFile(dbName, {}, resolve, reject);
+            }).catch(function () {
+                console.log("Copying database to application storage directory");
                 return new Promise(function (resolve, reject) {
-                    targetDir.getFile(dbName, {}, resolve, reject);
+                    sourceFile.copyTo(targetDir, dbName, resolve, reject);
                 }).then(function () {
-                    console.log("file already copied");
-                }).catch(function () {
-                    console.log("file doesn't exist, copying it");
-                    return new Promise(function (resolve, reject) {
-                        sourceFile.copyTo(targetDir, dbName, resolve, reject);
-                    }).then(function () {
-                        console.log("database file copied");
-                    });
+                    console.log("Database copied");
                 });
             });
-        }
-
+        });
     }
 
+    readTile(z, x, y, callback) {
+        const query = 'SELECT BASE64(tile_data) AS base64_tile_data FROM tiles WHERE zoom_level=? AND tile_column=? AND tile_row=?';
+        const params = [z, x, Math.pow(2,z)-y-1];
+        this.db.then(function(db) {
+            db.transaction(function (txn) {
+                txn.executeSql(query, params, function (tx, res) {
+                    const base64Data = res.rows.length ? res.rows.item(0).base64_tile_data : undefined;
+                    callback(undefined, base64Data); // Tile contents read, callback success.
+                });
+            }, function (error) {
+                callback(error); // Error executing SQL
+            });
+        }).catch(function(err) {
+            callback(err);
+        });
+    }
 
     loadTile(tile, callback) {
         const overscaling = tile.coord.z > this.maxzoom ? Math.pow(2, tile.coord.z - this.maxzoom) : 1;
         this.readTile(tile.coord.z, tile.coord.x, tile.coord.y, dispatch.bind(this));
 
-        function dispatch(err, vectorTile) {
+        function dispatch(err, base64Data) {
             if (err) {
-                done(err);
+                return callback(err);
             }
 
             const params = {
-                url: normalizeURL(tile.coord.url(this.tiles, this.maxzoom, this.scheme), this.url),
+                base64Data: base64Data,
                 uid: tile.uid,
                 coord: tile.coord,
                 zoom: tile.coord.z,
@@ -103,8 +97,7 @@ class MBTilesSource extends VectorTileSource {
                 overscaling: overscaling,
                 angle: this.map.transform.angle,
                 pitch: this.map.transform.pitch,
-                showCollisionBoxes: this.map.showCollisionBoxes,
-                vectorTile: vectorTile
+                showCollisionBoxes: this.map.showCollisionBoxes
             };
 
             if (!tile.workerID || tile.state === 'expired') {
@@ -140,9 +133,7 @@ class MBTilesSource extends VectorTileSource {
                 }
             }
         }
-
     }
-
 }
 
 MBTilesSource.workerSourceURL = URL.createObjectURL(webworkify(require('./mbtiles_worker.js'), {bare: true}));

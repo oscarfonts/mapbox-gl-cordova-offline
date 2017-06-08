@@ -6,6 +6,8 @@
     <meta name='viewport' content='initial-scale=1,maximum-scale=1,user-scalable=no'/>
     <link href='mapbox-gl.css' rel='stylesheet'/>
     <script type="text/javascript" src="cordova.js"></script>
+    <!--script src='http://172.27.203.112:8080/mapbox-gl-cordova-mbtiles.js'></script-->
+    <!--script src='http://192.168.168.35:8080/mapbox-gl-cordova-mbtiles.js'></script-->
     <script src='mapbox-gl-cordova-mbtiles.js'></script>
     <style>
         body {
@@ -28,7 +30,6 @@
 
     'cordova' in window ? document.addEventListener("deviceready", init, false) : init();
 
-
     function init() {
         var map = new mapboxgl.Map({
             container: 'map',
@@ -38,11 +39,10 @@
         map.addControl(new mapboxgl.NavigationControl());
 
         map.on('load', function () {
-            map.addSourceType('mbtiles', mapboxgl.MbtilesSourceType, function () {
+            map.addSourceType('mbtiles', mapboxgl.MBTilesSource, function () {
                 map.addSource('openmaptiles', {
                     type: 'mbtiles',
-                    tiles:['http://demo.fonts.cat:8001/data/openmaptiles/{z}/{x}/{y}.pbf']
-                    //tiles: ['mbtiles:///data/barcelona_spain.mbtiles']
+                    name: 'barcelona.mbtiles'
                 });
 
                 map.addLayer({
@@ -67,8 +67,6 @@
 
         });
     }
-
-
 
 </script>
 </body>
