@@ -11,7 +11,8 @@ cordova platform add android
 cordova run android
 ```
 
-Will use `www/data/barcelona.mbtiles` as data source, and `www/data/klokantech-basic.json` as style.
+Will use `www/data/barcelona.mbtiles` as sample data source, and `www/data/klokantech-basic.json` as sample style, both
+coming from the OpenMapTiles project: https://openmaptiles.org/
 
 
 ## Develop with live reload
