@@ -6,9 +6,7 @@
     <meta name='viewport' content='initial-scale=1,maximum-scale=1,user-scalable=no'/>
     <link href='mapbox-gl.css' rel='stylesheet'/>
     <script type="text/javascript" src="cordova.js"></script>
-    <!--script src='http://172.27.203.112:8080/mapbox-gl-cordova-mbtiles.js'></script-->
-    <!--script src='http://192.168.168.35:8080/mapbox-gl-cordova-mbtiles.js'></script-->
-    <script src='mapbox-gl-cordova-mbtiles.js'></script>
+    <script src='http://172.27.203.112:8080/mapbox-gl-cordova-mbtiles.js'></script>
     <style>
         body {
             margin: 0;
@@ -58,6 +56,7 @@
         var map = new mapboxgl.Map({
             container: 'map',
             style: 'data/empty.json',
+            hash: true,
             center: [2.15, 41.38],
             zoom: 12,
             bearing: -45
@@ -86,5 +85,38 @@
     }
 
 </script>
+
+<!-- Code needed by live-server -->
+<script type="text/javascript">
+	var IP_ADDRESS_AND_PORT = "172.27.203.112:8080";
+	if ('WebSocket' in window) {
+		(function() {
+			function refreshCSS() {
+				var sheets = [].slice.call(document.getElementsByTagName("link"));
+				var head = document.getElementsByTagName("head")[0];
+				for (var i = 0; i < sheets.length; ++i) {
+					var elem = sheets[i];
+					head.removeChild(elem);
+					var rel = elem.rel;
+					if (elem.href && typeof rel != "string" || rel.length == 0 || rel.toLowerCase() == "stylesheet") {
+						var url = elem.href.replace(/(&|\?)_cacheOverride=\d+/, '');
+						elem.href = url + (url.indexOf('?') >= 0 ? '&' : '?') + '_cacheOverride=' + (new Date().valueOf());
+					}
+					head.appendChild(elem);
+				}
+			}
+			var protocol = window.location.protocol === 'https:' ? 'wss://' : 'ws://';
+			var address = protocol + IP_ADDRESS_AND_PORT + '/ws';
+			var socket = new WebSocket(address);
+			socket.onmessage = function(msg) {
+				if (msg.data == 'reload') window.location.reload();
+				else if (msg.data == 'refreshcss') refreshCSS();
+			};
+			console.log('Live reload enabled.');
+		})();
+	}
+	// ]]>
+</script>
+
 </body>
 </html>

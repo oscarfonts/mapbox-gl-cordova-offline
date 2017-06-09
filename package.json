@@ -4,9 +4,9 @@
   "description": "A custom mapbox-gl build that reads vector tiles from a local mbtiles file in cordova",
   "main": "www/mapbox-gl-cordova-mbtiles.js",
   "scripts": {
-    "start": "cordova run android & npm run watch & npm run server",
+    "start": "cordova run android & npm run watch & npm run server && fg",
     "watch": "watchify -s mapboxgl src/index.js -d -o www/mapbox-gl-cordova-mbtiles.js --verbose",
-    "server": "http-server www",
+    "server": "live-server --watch=www --no-browser",
     "build": "browserify -s mapboxgl src/index.js -d --plugin [minifyify --map mapbox-gl-cordova-mbtiles.js.map --output www/mapbox-gl-cordova-mbtiles.js.map] -o www/mapbox-gl-cordova-mbtiles.js"
   },
   "keywords": [],
@@ -19,7 +19,7 @@
   "devDependencies": {
     "browserify": "14.4.0",
     "bubleify": "0.7.0",
-    "http-server": "0.10.0",
+    "live-server": "1.2.0",
     "mapbox-gl": "0.37.0",
     "minifyify": "7.3.5",
     "pako": "1.0.5",
