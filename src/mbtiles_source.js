@@ -62,7 +62,7 @@ class MBTilesSource extends VectorTileSource {
 
     readTile(z, x, y, callback) {
         const query = 'SELECT BASE64(tile_data) AS base64_tile_data FROM tiles WHERE zoom_level=? AND tile_column=? AND tile_row=?';
-        const params = [z, x, Math.pow(2,z)-y-1];
+        const params = [z, x, y];
         this.db.then(function(db) {
             db.transaction(function (txn) {
                 txn.executeSql(query, params, function (tx, res) {
@@ -79,7 +79,12 @@ class MBTilesSource extends VectorTileSource {
 
     loadTile(tile, callback) {
         const overscaling = tile.coord.z > this.maxzoom ? Math.pow(2, tile.coord.z - this.maxzoom) : 1;
-        this.readTile(tile.coord.z, tile.coord.x, tile.coord.y, dispatch.bind(this));
+
+        const z = Math.min(tile.coord.z, this.maxzoom || tile.coord.z); // Don't try to get data over maxzoom
+        const x = tile.coord.x;
+        const y = Math.pow(2,z)-tile.coord.y-1; // Tiles on database are tms (inverted y axis)
+
+        this.readTile(z, x, y, dispatch.bind(this));
 
         function dispatch(err, base64Data) {
             if (err) {
