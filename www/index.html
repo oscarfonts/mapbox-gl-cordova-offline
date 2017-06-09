@@ -30,10 +30,37 @@
 
     'cordova' in window ? document.addEventListener("deviceready", init, false) : init();
 
+    function readJSON(url) {
+        return new Promise(function (resolve, reject) {
+            const xhr = new window.XMLHttpRequest();
+            xhr.open('GET', url, true);
+            xhr.setRequestHeader('Accept', 'application/json');
+            xhr.onerror = function (e) {
+                reject(e);
+            };
+            xhr.onload = function () {
+                if (xhr.status >= 200 && xhr.status < 300 && xhr.response) {
+                    try {
+                        resolve(JSON.parse(xhr.response));
+                    } catch (err) {
+                        reject(err);
+                    }
+                } else {
+                    reject(new Error(xhr.statusText, xhr.status));
+                }
+            };
+            xhr.send();
+            return xhr;
+        });
+    }
+
     function init() {
         var map = new mapboxgl.Map({
             container: 'map',
-            style: 'data/empty.json'
+            style: 'data/empty.json',
+            center: [2.15, 41.38],
+            zoom: 12,
+            bearing: -45
         });
 
         map.addControl(new mapboxgl.NavigationControl());
@@ -42,27 +69,17 @@
             map.addSourceType('mbtiles', mapboxgl.MBTilesSource, function () {
                 map.addSource('openmaptiles', {
                     type: 'mbtiles',
-                    name: 'barcelona.mbtiles'
+                    name: 'barcelona.mbtiles',
+                    maxzoom: 14,
+                    bounds: [1.898, 41.246, 2.312, 41.533]
                 });
 
-                map.addLayer({
-                    "id": "water",
-                    "type": "fill",
-                    "source": "openmaptiles",
-                    "source-layer": "water",
-                    "filter": [
-                        "==",
-                        "$type",
-                        "Polygon"
-                    ],
-                    "layout": {
-                        "visibility": "visible"
-                    },
-                    "paint": {
-                        "fill-color": "rgb(0,120,180)",
-                        "fill-antialias": false
-                    }
-                })
+                // Apply style rules from klokantech-basic
+                readJSON('data/klokantech-basic.json').then(function (style) {
+                    style.layers.map(function (layer) {
+                        map.addLayer(layer);
+                    });
+                });
             });
 
         });

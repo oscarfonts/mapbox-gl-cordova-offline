@@ -5,6 +5,7 @@
     "mapbox:autocomposite": true
   },
   "sources": {},
+  "glyphs": "https://free.tilehosting.com/fonts/{fontstack}/{range}.pbf?key={key}",
   "layers": [
     {
       "id": "background",
