@@ -34,6 +34,13 @@ web view will be reloaded.
 Use the bundled library from `www/mapbox-gl-cordova-mbtiles.js` which is based in mapbox-gl-js v.0.37.0, or install it
 as npm dependency (`npm install oscarfonts/mapbox-gl-cordova-mbtiles`).
 
+Add the following cordova plugins via "cordova plugin add" command:
+
+    * "cordova-plugin-device"
+    * "cordova-plugin-file"
+    * "cordova-sqlite-ext"
+
+
 Mapbox-gl is not able to load a style with an mbtiles source directy (at instantiation), so use a base style to create
 the map, then register the mbtiles source type, and finally load the source.
   
