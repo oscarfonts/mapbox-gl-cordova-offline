@@ -5,7 +5,7 @@
     "mapbox:autocomposite": true
   },
   "sources": {},
-  "glyphs": "https://free.tilehosting.com/fonts/{fontstack}/{range}.pbf?key={key}",
+  "glyphs": "http://michogarcia.org/klokantech-gl-fonts/{fontstack}/{range}.pbf",
   "layers": [
     {
       "id": "background",
