@@ -11,7 +11,13 @@ class MBTilesSource extends VectorTileSource {
     openDatabase(name) {
         if ('sqlitePlugin' in self) {
             return this.copyDatabaseFile(name).then(function () {
-                return sqlitePlugin.openDatabase({name: name, location: 'default'});
+                var params = {name: name};
+                if(device.platform === 'iOS') {
+                    params.iosDatabaseLocation = 'Documents';
+                } else {
+                    params.location = 'default';
+                }
+                return sqlitePlugin.openDatabase(params);
             });
         } else {
             return Promise.reject(new Error("cordova-sqlite-ext plugin not available. " +
