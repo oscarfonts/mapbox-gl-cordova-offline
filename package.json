@@ -1,10 +1,10 @@
 {
     "name": "mapbox-gl-cordova-mbtiles",
-    "version": "0.0.1",
+    "version": "0.0.2",
     "description": "A custom mapbox-gl build that reads vector tiles from a local mbtiles file in cordova",
     "main": "www/mapbox-gl-cordova-mbtiles.js",
     "scripts": {
-       "version": "node node_modules/auto-changelog/lib/index.js -p && git add CHANGELOG.md",
+        "version": "node node_modules/auto-changelog/lib/index.js -p && git add CHANGELOG.md",
         "start": "cordova run android & npm run watch & npm run server && fg",
         "watch": "watchify -s mapboxgl src/index.js -d -o www/mapbox-gl-cordova-mbtiles.js --verbose",
         "server": "live-server --watch=www --no-browser",
