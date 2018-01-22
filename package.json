@@ -32,6 +32,7 @@
         ]
     },
     "dependencies": {
+        "auto-changelog": "1.4.0",
         "base64-js": "1.2.1",
         "cordova-android": "6.2.3",
         "cordova-plugin-compat": "1.2.0",
