@@ -19,7 +19,7 @@ coming from the OpenMapTiles project: https://openmaptiles.org/
 
 1. Get the IP address from your development computer (`ifconfig`).
 2. Edit `www/index.html` and put your IP address in the script tag that loads the `mapbox-gl-cordova-mbtiles.js` resource:
-   `<script src='http://xxx.xxx.xxx.xxx:8080/mapbox-gl-cordova-mbtiles.js'></script>`. For live reload to work,
+   `<script src='http://xxx.xxx.xxx.xxx:8080/www/mapbox-gl-cordova-mbtiles.js'></script>`. For live reload to work,
    change also the IP_ADDRESS_AND_PORT var, and uncomment the code block at the end of the document.
 3. Make sure to have your device attached (`adb devices`).
 4. Run `npm start`.
