@@ -1,6 +1,6 @@
 {
   "version": 8,
-  "name": "Klokantech Basic",
+  "name": "KlokanTech Basic",
   "metadata": {
     "mapbox:autocomposite": false,
     "mapbox:type": "template",
@@ -22,8 +22,8 @@
       "url": "http://demo.fonts.cat:8001/data/openmaptiles.json"
     }
   },
-  "sprite": "http://fonts.cat/vectortile-samples/sprites/logos",
-  "glyphs": "https://free.tilehosting.com/fonts/{fontstack}/{range}.pbf?key={key}",
+  "sprite": "http://michogarcia.org/sprites/",
+  "glyphs": "http://michogarcia.org/klokantech-gl-fonts/{fontstack}/{range}.pbf",
   "layers": [
     {
       "id": "background",
@@ -296,8 +296,7 @@
         "text-field": "{housenumber}",
         "text-size": 10,
         "text-font": [
-          "Klokantech Noto Sans Regular",
-          "Klokantech Noto Sans CJK Regular"
+          "KlokanTech Noto Sans Regular"
         ]
       },
       "paint": {
@@ -931,8 +930,7 @@
       "layout": {
         "text-size": 11,
         "text-font": [
-          "Klokantech Noto Sans Regular",
-          "Klokantech Noto Sans CJK Regular"
+          "KlokanTech Noto Sans Regular"
         ],
         "visibility": "visible",
         "text-offset": [
@@ -965,8 +963,7 @@
         "symbol-placement": "line",
         "text-field": "{name}",
         "text-font": [
-          "Klokantech Noto Sans Regular",
-          "Klokantech Noto Sans CJK Regular"
+          "KlokanTech Noto Sans Regular"
         ],
         "text-transform": "uppercase",
         "text-letter-spacing": 0.1,
@@ -1013,8 +1010,7 @@
       "layout": {
         "text-field": "{name_en}",
         "text-font": [
-          "Klokantech Noto Sans Regular",
-          "Klokantech Noto Sans CJK Regular"
+          "KlokanTech Noto Sans Regular"
         ],
         "text-max-width": 6,
         "text-size": {
@@ -1061,8 +1057,7 @@
       "layout": {
         "text-field": "{name_en}",
         "text-font": [
-          "Klokantech Noto Sans Regular",
-          "Klokantech Noto Sans CJK Regular"
+          "KlokanTech Noto Sans Regular"
         ],
         "text-max-width": 10,
         "text-size": {
@@ -1107,8 +1102,7 @@
       "layout": {
         "text-field": "{name}",
         "text-font": [
-          "Klokantech Noto Sans Bold",
-          "Klokantech Noto Sans CJK Bold"
+          "KlokanTech Noto Sans Bold"
         ],
         "text-max-width": 10,
         "text-size": {
