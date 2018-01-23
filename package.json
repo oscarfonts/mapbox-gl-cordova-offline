@@ -1,6 +1,6 @@
 {
   "name": "mapbox-gl-cordova-mbtiles",
-  "version": "0.0.3",
+  "version": "0.0.4",
   "description": "A custom mapbox-gl build that reads vector tiles from a local mbtiles file in cordova",
   "main": "www/mapbox-gl-cordova-mbtiles.js",
   "scripts": {
