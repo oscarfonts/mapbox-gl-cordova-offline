@@ -11,6 +11,11 @@ cordova platform add android
 cordova run android
 ```
 
+```
+cordova platform add ios
+cordova run ios
+```
+
 Will use `www/data/barcelona.mbtiles` as sample data source, and `www/data/klokantech-basic.json` as sample style, both
 coming from the OpenMapTiles project: https://openmaptiles.org/
 

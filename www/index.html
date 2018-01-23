@@ -6,8 +6,8 @@
     <meta name='viewport' content='initial-scale=1,maximum-scale=1,user-scalable=no'/>
     <link href='mapbox-gl.css' rel='stylesheet'/>
     <script type="text/javascript" src="cordova.js"></script>
-    <script src='http://192.168.253.80:8080/www/mapbox-gl-cordova-mbtiles.js'></script>
-    <!--script src='mapbox-gl-cordova-mbtiles.js'></script-->
+    <!--script src='http://192.168.253.80:8080/www/mapbox-gl-cordova-mbtiles.js'></script-->
+    <script src='mapbox-gl-cordova-mbtiles.js'></script>
     <style>
         body {
             margin: 0;
@@ -38,7 +38,8 @@
                 reject(e);
             };
             xhr.onload = function () {
-                if (xhr.status >= 200 && xhr.status < 300 && xhr.response || xhr.status === 0 && xhr.response) {
+                const is_file = xhr.responseURL.indexOf("file://") === 0
+                if (((xhr.status >= 200 && xhr.status < 300) || is_file) && xhr.response) {
                     try {
                         resolve(JSON.parse(xhr.response));
                     } catch (err) {
@@ -53,55 +54,37 @@
         });
     }
 
-    const empty = {
-      "version": 8,
-      "name": "Empty",
-      "metadata": {
-        "mapbox:autocomposite": true
-      },
-      "sources": {},
-      "glyphs": "http://michogarcia.org/klokantech-gl-fonts/{fontstack}/{range}.pbf",
-      "layers": [
-        {
-          "id": "background",
-          "type": "background",
-          "paint": {
-            "background-color": "rgba(0,0,0,0)"
-          }
-        }
-      ]
-    }
-
     function init() {
-        var map = new mapboxgl.Map({
-            container: 'map',
-            style: empty,
-            hash: true,
-            center: [2.15, 41.38],
-            zoom: 12,
-            bearing: -45
-        });
+        readJSON('data/empty.json').then(function (empty) {
+            var map = new mapboxgl.Map({
+                container: 'map',
+                style: empty,
+                hash: true,
+                center: [2.15, 41.38],
+                zoom: 12,
+                bearing: -45
+            });
 
-        map.addControl(new mapboxgl.NavigationControl());
+            map.addControl(new mapboxgl.NavigationControl());
 
-        map.once('load', function () {
-            map.addSourceType('mbtiles', mapboxgl.MBTilesSource, function () {
-                map.addSource('openmaptiles', {
-                    type: 'mbtiles',
-                    name: 'barcelona.mbtiles',
-                    maxzoom: 14,
-                    bounds: [1.898, 41.246, 2.312, 41.533],
-                    attribution: "<a href=\"http://openmaptiles.org/\" target=\"_blank\">&copy; OpenMapTiles</a> <a href=\"http://www.openstreetmap.org/about/\" target=\"_blank\">&copy; OpenStreetMap contributors</a>"
-                });
+            map.once('load', function () {
+                map.addSourceType('mbtiles', mapboxgl.MBTilesSource, function () {
+                    map.addSource('openmaptiles', {
+                        type: 'mbtiles',
+                        name: 'barcelona.mbtiles',
+                        maxzoom: 14,
+                        bounds: [1.898, 41.246, 2.312, 41.533],
+                        attribution: "<a href=\"http://openmaptiles.org/\" target=\"_blank\">&copy; OpenMapTiles</a> <a href=\"http://www.openstreetmap.org/about/\" target=\"_blank\">&copy; OpenStreetMap contributors</a>"
+                    });
 
-                // Apply style rules from klokantech-basic
-                readJSON('data/klokantech-basic.json').then(function (style) {
-                    style.layers.map(function (layer) {
-                        map.addLayer(layer);
+                    // Apply style rules from klokantech-basic
+                    readJSON('data/klokantech-basic.json').then(function (style) {
+                        style.layers.map(function (layer) {
+                            map.addLayer(layer);
+                        });
                     });
                 });
             });
-
         });
     }
 
