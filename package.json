@@ -22,7 +22,7 @@
     "browserify": "14.4.0",
     "bubleify": "0.7.0",
     "live-server": "1.2.0",
-    "mapbox-gl": "0.38.0",
+    "mapbox-gl": "0.37.0",
     "minifyify": "7.3.5",
     "pako": "1.0.5",
     "watchify": "3.9.0",
