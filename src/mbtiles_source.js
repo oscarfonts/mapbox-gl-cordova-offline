@@ -1,17 +1,34 @@
+// @flow
+
 const VectorTileSource = require('mapbox-gl/src/source/vector_tile_source');
 const webworkify = require('webworkify');
+const Evented = require('mapbox-gl/src/util/evented');
+const pako = require('pako/lib/inflate');
+const base64js = require('base64-js');
+
+import type Tile from 'mapbox-gl/src/source/tile';
+import type Dispatcher from 'mapbox-gl/src/util/dispatcher';
+import type {Callback} from 'mapbox-gl/src/types/callback';
+
+declare var device: any;
+declare var cordova: any;
+declare var sqlitePlugin: any;
+declare function resolveLocalFileSystemURL(path: string, resolve: (x: any) => void, reject: (err: any) => void) : void;
 
 class MBTilesSource extends VectorTileSource {
-    constructor(id, options, dispatcher, eventedParent) {
+
+  db: any;
+    constructor(id: string, options: VectorSourceSpecification& {collectResourceTiming: boolean, name: string},
+                dispatcher: Dispatcher, eventedParent: Evented) {
         super(id, options, dispatcher, eventedParent);
         this.type = "mbtiles";
         this.db = this.openDatabase(options.name);
     }
 
-    openDatabase(name) {
+    openDatabase(name: string) : Promise<any> {
         if ('sqlitePlugin' in self) {
-            return this.copyDatabaseFile(name).then(function () {
-                var params = {name: name};
+            return this.copyDatabaseFile(name).then(function () : any {
+                var params: any = {name: name};
                 if(device.platform === 'iOS') {
                     params.iosDatabaseLocation = 'Documents';
                 } else {
@@ -25,7 +42,7 @@ class MBTilesSource extends VectorTileSource {
         }
     }
 
-    copyDatabaseFile(dbName) {
+    copyDatabaseFile(dbName: string) : any {
         const sourceFileName = cordova.file.applicationDirectory + 'www/data/' + dbName;
 
         if(!('device' in self)) {
@@ -66,14 +83,15 @@ class MBTilesSource extends VectorTileSource {
         });
     }
 
-    readTile(z, x, y, callback) {
+    readTile(z: number, x: number, y: number, callback: Callback<string>) {
         const query = 'SELECT BASE64(tile_data) AS base64_tile_data FROM tiles WHERE zoom_level=? AND tile_column=? AND tile_row=?';
         const params = [z, x, y];
         this.db.then(function(db) {
             db.transaction(function (txn) {
                 txn.executeSql(query, params, function (tx, res) {
                     const base64Data = res.rows.length ? res.rows.item(0).base64_tile_data : undefined;
-                    callback(undefined, base64Data); // Tile contents read, callback success.
+                    const rawData = base64Data ? pako.inflate(base64js.toByteArray(base64Data)) : undefined;
+                    callback(undefined, base64js.fromByteArray(rawData)); // Tile contents read, callback success.
                 });
             }, function (error) {
                 callback(error); // Error executing SQL
@@ -83,12 +101,13 @@ class MBTilesSource extends VectorTileSource {
         });
     }
 
-    loadTile(tile, callback) {
-        const overscaling = tile.coord.z > this.maxzoom ? Math.pow(2, tile.coord.z - this.maxzoom) : 1;
+    loadTile(tile: Tile, callback: Callback<void>) {
+        const coord = tile.tileID.canonical;
+        const overscaling = coord.z > this.maxzoom ? Math.pow(2, coord.z - this.maxzoom) : 1;
 
-        const z = Math.min(tile.coord.z, this.maxzoom || tile.coord.z); // Don't try to get data over maxzoom
-        const x = tile.coord.x;
-        const y = Math.pow(2,z)-tile.coord.y-1; // Tiles on database are tms (inverted y axis)
+        const z = Math.min(coord.z, this.maxzoom || coord.z); // Don't try to get data over maxzoom
+        const x = coord.x;
+        const y = Math.pow(2,z)-coord.y-1; // Tiles on database are tms (inverted y axis)
 
         this.readTile(z, x, y, dispatch.bind(this));
 
@@ -96,18 +115,19 @@ class MBTilesSource extends VectorTileSource {
             if (err) {
                 return callback(err);
             }
+            if (base64Data == undefined) {
+              return callback(new Error("empty data"));
+            }
 
             const params = {
-                base64Data: base64Data,
+                request: { url: "data:application/x-protobuf;base64," + base64Data },
                 uid: tile.uid,
-                coord: tile.coord,
-                zoom: tile.coord.z,
+                tileID: tile.tileID,
+                zoom: coord.z,
                 tileSize: this.tileSize * overscaling,
                 type: this.type,
                 source: this.id,
                 overscaling: overscaling,
-                angle: this.map.transform.angle,
-                pitch: this.map.transform.pitch,
                 showCollisionBoxes: this.map.showCollisionBoxes
             };
 
@@ -131,11 +151,6 @@ class MBTilesSource extends VectorTileSource {
                 if (this.map._refreshExpiredTiles) tile.setExpiryData(data);
                 tile.loadVectorData(data, this.map.painter);
 
-                if (tile.redoWhenDone) {
-                    tile.redoWhenDone = false;
-                    tile.redoPlacement(this);
-                }
-
                 callback(null);
 
                 if (tile.reloadCallback) {
@@ -145,8 +160,10 @@ class MBTilesSource extends VectorTileSource {
             }
         }
     }
+    static workerSourceURL : any;
 }
 
 MBTilesSource.workerSourceURL = URL.createObjectURL(webworkify(require('./mbtiles_worker.js'), {bare: true}));
+
 
 module.exports = MBTilesSource;
