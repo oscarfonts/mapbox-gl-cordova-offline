@@ -36,7 +36,7 @@ web view will be reloaded.
 
 ## Use in your application
 
-Use the bundled library from `www/mapbox-gl-cordova-mbtiles.js` which is based in mapbox-gl-js v.0.37.0, or install it
+Use the bundled library from `www/mapbox-gl-cordova-mbtiles.js` which is based in mapbox-gl-js v.0.44.0, or install it
 as npm dependency (`npm install oscarfonts/mapbox-gl-cordova-mbtiles`).
 
 Add the following cordova plugins via "cordova plugin add" command:
