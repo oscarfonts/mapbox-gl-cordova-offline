@@ -127,6 +127,7 @@ class MBTilesSource extends VectorTileSource {
                 tileSize: this.tileSize * overscaling,
                 type: this.type,
                 source: this.id,
+                pixelRatio: window.devicePixelRatio || 1,
                 overscaling: overscaling,
                 showCollisionBoxes: this.map.showCollisionBoxes
             };
