@@ -1,5 +1,7 @@
+// @flow
+
 const mapboxgl = require('mapbox-gl/src/index');
 
-mapboxgl.MBTilesSource = require('./mbtiles_source');
+mapboxgl.OfflineMap = require('./offline_map');
 
 module.exports = mapboxgl;
