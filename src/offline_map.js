@@ -37,24 +37,11 @@ const dereferenceStyle = (options) => {
 };
 
 const createEmptyMap = (options) => new Promise((resolve) => {
-    const emptyMapOptions = util.extend({}, options, {
-        style: {
-            'version': 8,
-            'name': 'Empty Style With Original Glyphs and Sprites',
-            'sources': {},
-            'glyphs': options.style.glyphs,
-            'sprite': options.style.sprite,
-            'layers': [
-                {
-                    'id': 'background',
-                    'type': 'background',
-                    'paint': {
-                        'background-color': 'rgba(0,0,0,0)'
-                    }
-                }
-            ]
-        }
+    const emptyMapStyle = util.extend({}, options.style, {
+        sources: {},
+        layers: []
     });
+    const emptyMapOptions = util.extend({}, options, {style: emptyMapStyle});
     const map = new Map(emptyMapOptions);
     map.once('load', () => map.addSourceType('mbtiles', MBTilesSource, () => resolve(map)));
 });

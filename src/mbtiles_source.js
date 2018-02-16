@@ -22,13 +22,13 @@ class MBTilesSource extends VectorTileSource {
                 dispatcher: Dispatcher, eventedParent: Evented) {
         super(id, options, dispatcher, eventedParent);
         this.type = "mbtiles";
-        this.db = this.openDatabase(options.name);
+        this.db = this.openDatabase(options.path);
     }
 
-    openDatabase(name: string) : Promise<any> {
+    openDatabase(dbLocation: string) : Promise<any> {
         if ('sqlitePlugin' in self) {
-            return this.copyDatabaseFile(name).then(function () : any {
-                var params: any = {name: name};
+            return this.copyDatabaseFile(dbLocation).then(function () : any {
+                var params: any = {name: dbLocation.split("/").slice(-1)[0]};
                 if(device.platform === 'iOS') {
                     params.iosDatabaseLocation = 'Documents';
                 } else {
@@ -42,9 +42,7 @@ class MBTilesSource extends VectorTileSource {
         }
     }
 
-    copyDatabaseFile(dbName: string) : any {
-        const sourceFileName = cordova.file.applicationDirectory + 'www/data/' + dbName;
-
+    copyDatabaseFile(dbLocation: string) : any {
         if(!('device' in self)) {
             return Promise.reject(new Error("cordova-plugin-device not available. " +
                 "Please install the plugin and make sure this code is run after onDeviceReady event"));
@@ -52,7 +50,9 @@ class MBTilesSource extends VectorTileSource {
 
         return Promise.all([
             new Promise(function (resolve, reject) {
-                resolveLocalFileSystemURL(sourceFileName, resolve, reject);
+                const absPath =  cordova.file.applicationDirectory + 'www/' + dbLocation;
+                console.log("absPath", absPath)
+                resolveLocalFileSystemURL(absPath, resolve, reject);
             }),
             new Promise(function (resolve, reject) {
                 if(device.platform === 'Android') {
@@ -68,8 +68,12 @@ class MBTilesSource extends VectorTileSource {
                 }
             })
         ]).then(function (files) {
+            const dbName = dbLocation.split("/").slice(-1)[0]; // Get the DB file basename
             const sourceFile = files[0];
             const targetDir = files[1];
+            console.log("dbName", dbName)
+            console.log("sourceFile", sourceFile)
+            console.log("targetDir", targetDir)
             return new Promise(function (resolve, reject) {
                 targetDir.getFile(dbName, {}, resolve, reject);
             }).catch(function () {

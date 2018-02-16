@@ -29,16 +29,11 @@
     'cordova' in window ? document.addEventListener("deviceready", init, false) : init();
 
     function init() {
-       const mapPromise = new mapboxgl.OfflineMap({
+       new mapboxgl.OfflineMap({
             container: 'map',
-            style: 'styles/klokantech-basic/klokantech-basic.json',
-            hash: true,
-            center: [2.15, 41.38],
-            zoom: 12,
-            bearing: -45
-       });
-
-       mapPromise.then((map) => {
+            style: 'styles/osm-bright/style-offline.json',
+            hash: true
+       }).then((map) => {
            map.addControl(new mapboxgl.NavigationControl());
        });
     }
