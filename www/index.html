@@ -6,8 +6,8 @@
     <meta name='viewport' content='initial-scale=1,maximum-scale=1,user-scalable=no'/>
     <link href='mapbox-gl.css' rel='stylesheet'/>
     <script type="text/javascript" src="cordova.js"></script>
-    <!--script src='http://192.168.253.80:8080/www/mapbox-gl-cordova-mbtiles.js'></script-->
-    <script src='mapbox-gl-cordova-mbtiles.js'></script>
+    <!--script src='http://172.27.203.11:8080/www/mapbox-gl-cordova-offline.js'></script-->
+    <script src='mapbox-gl-cordova-offline.js'></script>
     <style>
         body {
             margin: 0;
@@ -26,100 +26,55 @@
 
 <div id='map'></div>
 <script>
-
     'cordova' in window ? document.addEventListener("deviceready", init, false) : init();
 
-    function readJSON(url) {
-        return new Promise(function (resolve, reject) {
-            const xhr = new window.XMLHttpRequest();
-            xhr.open('GET', url, true);
-            xhr.setRequestHeader('Accept', 'application/json');
-            xhr.onerror = function (e) {
-                reject(e);
-            };
-            xhr.onload = function () {
-                const is_file = xhr.responseURL.indexOf("file://") === 0
-                if (((xhr.status >= 200 && xhr.status < 300) || is_file) && xhr.response) {
-                    try {
-                        resolve(JSON.parse(xhr.response));
-                    } catch (err) {
-                        reject(err);
-                    }
-                } else {
-                    reject(new Error(xhr.statusText, xhr.status));
-                }
-            };
-            xhr.send();
-            return xhr;
-        });
-    }
-
     function init() {
-        readJSON('data/empty.json').then(function (empty) {
-            var map = new mapboxgl.Map({
-                container: 'map',
-                style: empty,
-                hash: true,
-                center: [2.15, 41.38],
-                zoom: 12,
-                bearing: -45
-            });
-
-            map.addControl(new mapboxgl.NavigationControl());
-
-            map.once('load', function () {
-                map.addSourceType('mbtiles', mapboxgl.MBTilesSource, function () {
-                    map.addSource('openmaptiles', {
-                        type: 'mbtiles',
-                        name: 'barcelona.mbtiles',
-                        maxzoom: 14,
-                        bounds: [1.898, 41.246, 2.312, 41.533],
-                        attribution: "<a href=\"http://openmaptiles.org/\" target=\"_blank\">&copy; OpenMapTiles</a> <a href=\"http://www.openstreetmap.org/about/\" target=\"_blank\">&copy; OpenStreetMap contributors</a>"
-                    });
-
-                    // Apply style rules from klokantech-basic
-                    readJSON('data/klokantech-basic.json').then(function (style) {
-                        style.layers.map(function (layer) {
-                            map.addLayer(layer);
-                        });
-                    });
-                });
-            });
-        });
+       new mapboxgl.OfflineMap({
+           container: 'map',
+           style: 'styles/osm-bright/style-offline.json',
+           center: [
+               2.15,
+               41.38
+           ],
+           zoom: 12,
+           bearing: -45,
+           hash: true
+       }).then((map) => {
+           map.addControl(new mapboxgl.NavigationControl());
+       });
     }
-
 </script>
 
-<!-- Code needed by live-server -->
-<script type="text/javascript">
-	var IP_ADDRESS_AND_PORT = "192.168.253.80:8080";
+<!-- Code needed for live-reload when debugging -->
+<!--script type="text/javascript">
+	const IP_ADDRESS_AND_PORT = "172.27.203.11:8080";
 	if ('WebSocket' in window) {
 		(function() {
 			function refreshCSS() {
-				var sheets = [].slice.call(document.getElementsByTagName("link"));
-				var head = document.getElementsByTagName("head")[0];
-				for (var i = 0; i < sheets.length; ++i) {
-					var elem = sheets[i];
+				const sheets = [].slice.call(document.getElementsByTagName("link"));
+				const head = document.getElementsByTagName("head")[0];
+				for (let i = 0; i < sheets.length; ++i) {
+					const elem = sheets[i];
 					head.removeChild(elem);
-					var rel = elem.rel;
-					if (elem.href && typeof rel != "string" || rel.length == 0 || rel.toLowerCase() == "stylesheet") {
-						var url = elem.href.replace(/(&|\?)_cacheOverride=\d+/, '');
+					const rel = elem.rel;
+					if (elem.href && typeof rel !== "string" || rel.length === 0 || rel.toLowerCase() === "stylesheet") {
+						const url = elem.href.replace(/(&|\?)_cacheOverride=\d+/, '');
 						elem.href = url + (url.indexOf('?') >= 0 ? '&' : '?') + '_cacheOverride=' + (new Date().valueOf());
 					}
 					head.appendChild(elem);
 				}
 			}
-			var protocol = window.location.protocol === 'https:' ? 'wss://' : 'ws://';
-			var address = protocol + IP_ADDRESS_AND_PORT + '/ws';
-			var socket = new WebSocket(address);
+			const protocol = window.location.protocol === 'https:' ? 'wss://' : 'ws://';
+			const address = protocol + IP_ADDRESS_AND_PORT + '/ws';
+			const socket = new WebSocket(address);
 			socket.onmessage = function(msg) {
-				if (msg.data == 'reload') window.location.reload();
-				else if (msg.data == 'refreshcss') refreshCSS();
+				if (msg.data === 'reload') window.location.reload();
+				else if (msg.data === 'refreshcss') refreshCSS();
 			};
 			console.log('Live reload enabled.');
 		})();
 	}
-</script>
+</script-->
 
 </body>
 </html>
