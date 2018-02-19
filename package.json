@@ -1,15 +1,15 @@
 {
-  "name": "mapbox-gl-cordova-mbtiles",
+  "name": "mapbox-gl-cordova-offline",
   "version": "0.0.6",
-  "description": "A custom mapbox-gl build that reads vector tiles from a local mbtiles file in cordova",
-  "main": "www/mapbox-gl-cordova-mbtiles.js",
+  "description": "Offline vector maps in Cordova using Mapbox GL JS",
+  "main": "www/mapbox-gl-cordova-offline.js",
   "scripts": {
     "version": "node node_modules/auto-changelog/lib/index.js -p && git add CHANGELOG.md",
     "start": "cordova run android & npm run watch & npm run server && fg",
-    "watch": "watchify -s mapboxgl src/index.js -d -o www/mapbox-gl-cordova-mbtiles.js --verbose",
+    "watch": "watchify -s mapboxgl src/index.js -d -o www/mapbox-gl-cordova-offline.js --verbose",
     "server": "live-server --watch=www --no-browser",
-    "build": "browserify -s mapboxgl src/index.js -d --plugin [minifyify --map mapbox-gl-cordova-mbtiles.js.map --output www/mapbox-gl-cordova-mbtiles.js.map] -o www/mapbox-gl-cordova-mbtiles.js",
-    "build-debug": "browserify -s mapboxgl src/index.js -d  -o www/mapbox-gl-cordova-mbtiles.js",
+    "build": "browserify -s mapboxgl src/index.js -d --plugin [minifyify --map mapbox-gl-cordova-offline.js.map --output www/mapbox-gl-cordova-offline.js.map] -o www/mapbox-gl-cordova-offline.js",
+    "build-debug": "browserify -s mapboxgl src/index.js -d  -o www/mapbox-gl-cordova-offline.js",
     "flow": "flow"
   },
   "keywords": [],
@@ -17,7 +17,7 @@
   "license": "ISC",
   "repository": {
     "type": "git",
-    "url": "git@github.com:oscarfonts/mapbox-gl-cordova-mbtiles.git"
+    "url": "git@github.com:oscarfonts/mapbox-gl-cordova-offline.git"
   },
   "devDependencies": {
     "@mapbox/batfish": "^0.13.3",
@@ -111,7 +111,7 @@
     "@mapbox/whoots-js": "^3.0.0",
     "base64-js": "1.2.1",
     "brfs": "^1.4.0",
-    "cordova-android": "6.4.0",
+    "cordova-android": "6.3.0",
     "cordova-ios": "4.5.4",
     "cordova-plugin-compat": "1.2.0",
     "cordova-plugin-device": "1.1.6",
@@ -145,8 +145,8 @@
       "cordova-plugin-device": {}
     },
     "platforms": [
-      "android",
-      "ios"
+      "ios",
+      "android"
     ]
   }
 }

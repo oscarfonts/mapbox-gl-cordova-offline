@@ -22,8 +22,8 @@ as style, both coming from the OpenMapTiles project: https://openmaptiles.org/
 
 ## Integrate in your application
 
-Use the bundled library from `www/mapbox-gl-cordova-mbtiles.js` which is based in mapbox-gl-js v.0.44.0, or install it
-as npm dependency (`npm install oscarfonts/mapbox-gl-cordova-mbtiles`).
+Use the bundled library from `www/mapbox-gl-cordova-offline.js` which is based in mapbox-gl-js v.0.44.0, or install it
+as npm dependency (`npm install oscarfonts/mapbox-gl-cordova-offline`).
 
 Add the following cordova plugins via "cordova plugin add" command:
 
@@ -89,10 +89,10 @@ style:
 ## Enable live reload for development
 
 1. Get the your development computer's IP address (`ifconfig`).
-2. Edit `www/index.html` and put your IP address in the script tag that loads the `mapbox-gl-cordova-mbtiles.js` resource:
-   `<script src='http://xxx.xxx.xxx.xxx:8080/www/mapbox-gl-cordova-mbtiles.js'></script>`. For live reload to work,
+2. Edit `www/index.html` and put your IP address in the script tag that loads the `mapbox-gl-cordova-offline.js` resource:
+   `<script src='http://xxx.xxx.xxx.xxx:8080/www/mapbox-gl-cordova-offline.js'></script>`. For live reload to work,
    change also the IP_ADDRESS_AND_PORT var, and uncomment the code block at the end of the document.
 3. Run `npm start`.
 
-Every time the contents in `src/` are changed, the file `www/mapbox-gl-cordova-mbtiles.js` will be rebuilt, and the
+Every time the contents in `src/` are changed, the file `www/mapbox-gl-cordova-offline.js` will be rebuilt, and the
 web view will be reloaded.

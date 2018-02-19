@@ -19,7 +19,8 @@
   "sources": {
     "openmaptiles": {
       "type": "mbtiles",
-      "path": "data/2017-07-03_spain_barcelona.mbtiles"
+      "path": "data/2017-07-03_spain_barcelona.mbtiles",
+      "attribution": "<a href=\"http://www.openmaptiles.org/\" target=\"_blank\">&copy; OpenMapTiles</a> <a href=\"http://www.openstreetmap.org/about/\" target=\"_blank\">&copy; OpenStreetMap contributors</a>"
     }
   },
   "sprite": "styles/klokantech-basic/sprite",
