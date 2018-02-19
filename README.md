@@ -1,17 +1,19 @@
 # Offline vector maps in Cordova using Mapbox GL JS
 
-A mapbox-gl-js build capable of reading local mbtiles files in cordova.
+A mapbox-gl-js build capable of reading local mbtiles in cordova.
 Tested on Android, and (to a lesser extent) on iOS.
 
 
 ## Run example application
 
 ```
+npm install
 cordova platform add android
 cordova run android
 ```
 
 ```
+npm install
 cordova platform add ios
 cordova run ios
 ```
