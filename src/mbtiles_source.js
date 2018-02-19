@@ -51,7 +51,6 @@ class MBTilesSource extends VectorTileSource {
         return Promise.all([
             new Promise(function (resolve, reject) {
                 const absPath =  cordova.file.applicationDirectory + 'www/' + dbLocation;
-                console.log("absPath", absPath)
                 resolveLocalFileSystemURL(absPath, resolve, reject);
             }),
             new Promise(function (resolve, reject) {
@@ -71,9 +70,6 @@ class MBTilesSource extends VectorTileSource {
             const dbName = dbLocation.split("/").slice(-1)[0]; // Get the DB file basename
             const sourceFile = files[0];
             const targetDir = files[1];
-            console.log("dbName", dbName)
-            console.log("sourceFile", sourceFile)
-            console.log("targetDir", targetDir)
             return new Promise(function (resolve, reject) {
                 targetDir.getFile(dbName, {}, resolve, reject);
             }).catch(function () {

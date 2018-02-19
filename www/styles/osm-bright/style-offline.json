@@ -51,8 +51,8 @@
       "path": "data/2017-07-03_spain_barcelona.mbtiles"
     }
   },
-  "sprite": "file:///android_asset/www/styles/osm-bright/sprite",
-  "glyphs": "file:///android_asset/www/fonts/{fontstack}/{range}.pbf",
+  "sprite": "styles/osm-bright/sprite",
+  "glyphs": "fonts/{fontstack}/{range}.pbf",
   "layers": [
     {
       "id": "background",

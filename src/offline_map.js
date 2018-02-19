@@ -1,6 +1,6 @@
 // @flow
 
-"use strict";
+'use strict';
 
 const MBTilesSource = require('./mbtiles_source');
 const Map = require('mapbox-gl/src/ui/map');
@@ -36,6 +36,17 @@ const dereferenceStyle = (options) => {
     }
 };
 
+const absoluteSpriteUrl = (options) => {
+    const style = options.style;
+    const hasProtocol = /^.+:\/\//;
+    const path = window.location.origin + window.location.pathname.split('/').slice(0, -1).join('/');
+
+    if (('sprite' in style) && !style.sprite.match(hasProtocol)) {
+        style.sprite = path + '/' +  style.sprite; // eslint-disable-line prefer-template
+    }
+    return options;
+};
+
 const createEmptyMap = (options) => new Promise((resolve) => {
     const emptyMapStyle = util.extend({}, options.style, {
         sources: {},
@@ -57,7 +68,7 @@ const loadLayers = (style) => (map) => {
 };
 
 const OfflineMap = (options) =>
-    dereferenceStyle(options).then((newOptions) =>
+    dereferenceStyle(options).then(absoluteSpriteUrl).then((newOptions) =>
         createEmptyMap(newOptions)
             .then(loadSources(newOptions.style))
             .then(loadLayers(newOptions.style))
