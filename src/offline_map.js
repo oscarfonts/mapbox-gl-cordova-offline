@@ -32,7 +32,7 @@ const dereferenceStyle = (options) => {
     if (typeof options.style === 'string' || options.style instanceof String) {
         return readJSON(options.style).then((style) => util.extend({}, options, {style: style}));
     } else {
-        return options;
+        return Promise.resolve(options);
     }
 };
 
