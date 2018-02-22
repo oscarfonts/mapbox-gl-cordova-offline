@@ -89,9 +89,11 @@ class MBTilesSource extends VectorTileSource {
         this.db.then(function(db) {
             db.transaction(function (txn) {
                 txn.executeSql(query, params, function (tx, res) {
-                    const base64Data = res.rows.length ? res.rows.item(0).base64_tile_data : undefined;
-                    const rawData = base64Data ? pako.inflate(base64js.toByteArray(base64Data)) : undefined;
-                    callback(undefined, base64js.fromByteArray(rawData)); // Tile contents read, callback success.
+                    if (res.rows.length) {
+                        const base64Data = res.rows.item(0).base64_tile_data;
+                        const rawData = pako.inflate(base64js.toByteArray(base64Data));
+                        callback(undefined, base64js.fromByteArray(rawData)); // Tile contents read, callback success.
+                    }
                 });
             }, function (error) {
                 callback(error); // Error executing SQL
