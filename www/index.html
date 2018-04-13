@@ -26,22 +26,22 @@
 
 <div id='map'></div>
 <script>
-    'cordova' in window ? document.addEventListener("deviceready", init, false) : init();
+    'cordova' in window ? document.addEventListener('deviceready', init, false) : init()
 
-    function init() {
-       new mapboxgl.OfflineMap({
-           container: 'map',
-           style: 'styles/osm-bright/style-offline.json',
-           center: [
-               2.15,
-               41.38
-           ],
-           zoom: 12,
-           bearing: -45,
-           hash: true
-       }).then((map) => {
-           map.addControl(new mapboxgl.NavigationControl());
-       });
+    function init () {
+        new mapboxgl.OfflineMap({
+            container: 'map',
+            style: 'styles/osm-bright/style-offline.json',
+            center: [
+                2.15,
+                41.38
+            ],
+            zoom: 12,
+            bearing: -45,
+            hash: true
+        }).then(function (map) {
+            map.addControl(new mapboxgl.NavigationControl())
+        })
     }
 </script>
 

@@ -12,11 +12,14 @@ cordova platform add android
 cordova run android
 ```
 
+**The Android emulator browser won't display WebGL content, please run on a physical Android device**
+
 ```
 npm install
 cordova platform add ios
 cordova run ios
 ```
+
 
 Will use `www/data/2017-07-03_spain_barcelona.mbtiles` as sample data source, and `www/styles/osm-bright/style-offline.json`
 as style, both coming from the OpenMapTiles project: https://openmaptiles.org/
@@ -41,7 +44,7 @@ offline map creation process is asynchronous:
        new mapboxgl.OfflineMap({
             container: 'map',
             style: 'styles/osm-bright/style-offline.json'
-       }).then((map) => {
+       }).then(function(map) {
            map.addControl(new mapboxgl.NavigationControl());
        });
 ```
