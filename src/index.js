@@ -1,7 +1,7 @@
-// @flow
+import mapboxgl from 'mapbox-gl/src/index'
 
-const mapboxgl = require('mapbox-gl/src/index');
+import offlineMap from './offline_map'
 
-mapboxgl.OfflineMap = require('./offline_map');
+mapboxgl.OfflineMap = offlineMap
 
-module.exports = mapboxgl;
+export default mapboxgl
