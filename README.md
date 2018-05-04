@@ -27,7 +27,7 @@ as style, both coming from the OpenMapTiles project: https://openmaptiles.org/
 
 ## Integrate in your application
 
-Use the bundled library from `www/mapbox-gl-cordova-offline.js` which is based in mapbox-gl-js v.0.44.0, or install it
+Use the bundled library from `www/mapbox-gl-cordova-offline.js` which is based in mapbox-gl-js, or install it
 as npm dependency (`npm install oscarfonts/mapbox-gl-cordova-offline`).
 
 Add the following cordova plugins via "cordova plugin add" command:
