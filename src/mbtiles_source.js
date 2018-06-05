@@ -91,6 +91,8 @@ class MBTilesSource extends VectorTileSource {
                         const base64Data = res.rows.item(0).base64_tile_data;
                         const rawData = pako.inflate(base64js.toByteArray(base64Data));
                         callback(undefined, base64js.fromByteArray(rawData)); // Tile contents read, callback success.
+                    } else {
+                        callback(new Error('tile ' + params.join(',') + ' not found'));
                     }
                 });
             }, function (error) {
