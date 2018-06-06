@@ -2,10 +2,10 @@
 
 'use strict';
 
-const MBTilesSource = require('./mbtiles_source');
-const Map = require('mapbox-gl/src/ui/map');
-const util = require('mapbox-gl/src/util/util');
-const window = require('mapbox-gl/src/util/window');
+import MBTilesSource from './mbtiles_source'
+import Map from 'mapbox-gl/src/ui/map'
+import {extend} from 'mapbox-gl/src/util/util'
+import window from 'mapbox-gl/src/util/window'
 
 const readJSON = (url) => new Promise((resolve, reject) => {
     const xhr = new window.XMLHttpRequest();
@@ -30,7 +30,7 @@ const readJSON = (url) => new Promise((resolve, reject) => {
 
 const dereferenceStyle = (options) => {
     if (typeof options.style === 'string' || options.style instanceof String) {
-        return readJSON(options.style).then((style) => util.extend({}, options, {style: style}));
+        return readJSON(options.style).then((style) => extend({}, options, {style: style}));
     } else {
         return Promise.resolve(options);
     }
@@ -48,11 +48,11 @@ const absoluteSpriteUrl = (options) => {
 };
 
 const createEmptyMap = (options) => new Promise((resolve) => {
-    const emptyMapStyle = util.extend({}, options.style, {
+    const emptyMapStyle = extend({}, options.style, {
         sources: {},
         layers: []
     });
-    const emptyMapOptions = util.extend({}, options, {style: emptyMapStyle});
+    const emptyMapOptions = extend({}, options, {style: emptyMapStyle});
     const map = new Map(emptyMapOptions);
     map.once('load', () => map.addSourceType('mbtiles', MBTilesSource, () => resolve(map)));
 });
@@ -74,4 +74,4 @@ const OfflineMap = (options) =>
             .then(loadLayers(newOptions.style))
     );
 
-module.exports = OfflineMap;
+export default OfflineMap

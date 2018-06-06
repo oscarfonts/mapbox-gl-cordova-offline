@@ -1,31 +1,16 @@
-// @flow
-
-const VectorTileSource = require('mapbox-gl/src/source/vector_tile_source');
-const webworkify = require('webworkify');
-const Evented = require('mapbox-gl/src/util/evented');
-const pako = require('pako/lib/inflate');
-const base64js = require('base64-js');
-
-import type Tile from 'mapbox-gl/src/source/tile';
-import type Dispatcher from 'mapbox-gl/src/util/dispatcher';
-import type {Callback} from 'mapbox-gl/src/types/callback';
-
-declare var device: any;
-declare var cordova: any;
-declare var sqlitePlugin: any;
-declare function resolveLocalFileSystemURL(path: string, resolve: (x: any) => void, reject: (err: any) => void) : void;
+import VectorTileSource from 'mapbox-gl/src/source/vector_tile_source'
+import pako from 'pako/lib/inflate'
+import base64js from 'base64-js'
 
 class MBTilesSource extends VectorTileSource {
 
-  db: any;
-    constructor(id: string, options: VectorSourceSpecification& {collectResourceTiming: boolean, name: string},
-                dispatcher: Dispatcher, eventedParent: Evented) {
+    constructor(id, options, dispatcher, eventedParent) {
         super(id, options, dispatcher, eventedParent);
         this.type = "mbtiles";
         this.db = this.openDatabase(options.path);
     }
 
-    openDatabase(dbLocation: string) : Promise<any> {
+    openDatabase(dbLocation) {
         const dbName = dbLocation.split("/").slice(-1)[0]; // Get the DB file basename
         const source = this;
         if ('sqlitePlugin' in self) {
@@ -48,8 +33,8 @@ class MBTilesSource extends VectorTileSource {
                     }).catch(function () {
                         return source.copyDatabaseFile(dbLocation, dbName, targetDir)
                     });
-                }).then(function () : any {
-                    var params: any = {name: dbName};
+                }).then(function () {
+                    var params = {name: dbName};
                     if(device.platform === 'iOS') {
                         params.iosDatabaseLocation = 'Documents';
                     } else {
@@ -67,7 +52,7 @@ class MBTilesSource extends VectorTileSource {
         }
     }
 
-    copyDatabaseFile(dbLocation: string, dbName: string, targetDir: any) : any {
+    copyDatabaseFile(dbLocation, dbName, targetDir) {
         console.log("Copying database to application storage directory");
         return new Promise(function (resolve, reject) {
             const absPath =  cordova.file.applicationDirectory + 'www/' + dbLocation;
@@ -81,7 +66,7 @@ class MBTilesSource extends VectorTileSource {
         });
     }
 
-    readTile(z: number, x: number, y: number, callback: Callback<string>) {
+    readTile(z, x, y, callback) {
         const query = 'SELECT BASE64(tile_data) AS base64_tile_data FROM tiles WHERE zoom_level=? AND tile_column=? AND tile_row=?';
         const params = [z, x, y];
         this.db.then(function(db) {
@@ -103,7 +88,7 @@ class MBTilesSource extends VectorTileSource {
         });
     }
 
-    loadTile(tile: Tile, callback: Callback<void>) {
+    loadTile(tile, callback) {
         const coord = tile.tileID.canonical;
         const overscaling = coord.z > this.maxzoom ? Math.pow(2, coord.z - this.maxzoom) : 1;
 
@@ -163,10 +148,6 @@ class MBTilesSource extends VectorTileSource {
             }
         }
     }
-    static workerSourceURL : any;
 }
 
-MBTilesSource.workerSourceURL = URL.createObjectURL(webworkify(require('./mbtiles_worker.js'), {bare: true}));
-
-
-module.exports = MBTilesSource;
+export default MBTilesSource;
