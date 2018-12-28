@@ -49,6 +49,7 @@
     "openmaptiles": {
       "type": "mbtiles",
       "path": "data/2017-07-03_spain_barcelona.mbtiles",
+      "url": "http://tileserver.fonts.cat/data/barcelona.json",
       "attribution": "<a href=\"http://www.openmaptiles.org/\" target=\"_blank\">&copy; OpenMapTiles</a> <a href=\"http://www.openstreetmap.org/about/\" target=\"_blank\">&copy; OpenStreetMap contributors</a>"
     }
   },

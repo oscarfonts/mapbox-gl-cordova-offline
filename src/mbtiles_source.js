@@ -1,6 +1,10 @@
 import VectorTileSource from 'mapbox-gl/src/source/vector_tile_source'
 import pako from 'pako/lib/inflate'
 import base64js from 'base64-js'
+import { normalizeTileURL as normalizeURL } from 'mapbox-gl/src/util/mapbox'
+import { ResourceType } from 'mapbox-gl/src/util/ajax'
+
+export const USE_ONLINE = false;
 
 class MBTilesSource extends VectorTileSource {
 
@@ -75,7 +79,7 @@ class MBTilesSource extends VectorTileSource {
                     if (res.rows.length) {
                         const base64Data = res.rows.item(0).base64_tile_data;
                         const rawData = pako.inflate(base64js.toByteArray(base64Data));
-                        callback(undefined, base64js.fromByteArray(rawData)); // Tile contents read, callback success.
+                        callback(undefined, rawData); // Tile contents read, callback success.
                     } else {
                         callback(new Error('tile ' + params.join(',') + ' not found'));
                     }
@@ -100,14 +104,14 @@ class MBTilesSource extends VectorTileSource {
 
         function dispatch(err, base64Data) {
             if (err) {
-                return callback(err);
+                if(!USE_ONLINE) return callback(err);
+                else base64Data = '';
             }
             if (base64Data == undefined) {
               return callback(new Error("empty data"));
             }
 
             const params = {
-                request: { url: "data:application/x-protobuf;base64," + base64Data },
                 uid: tile.uid,
                 tileID: tile.tileID,
                 zoom: coord.z,
@@ -118,6 +122,17 @@ class MBTilesSource extends VectorTileSource {
                 overscaling: overscaling,
                 showCollisionBoxes: this.map.showCollisionBoxes
             };
+
+            if(USE_ONLINE){
+                var url = normalizeURL(tile.tileID.canonical.url(this.tiles, this.scheme), this.url);
+                var request = this.map._transformRequest(url, ResourceType.Tile);
+                params.request = request;
+            }
+            else{
+                params.request = '';
+                params.customData = base64Data;
+
+            }
 
             if (!tile.workerID || tile.state === 'expired') {
                 tile.workerID = this.dispatcher.send('loadTile', params, done.bind(this));

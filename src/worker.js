@@ -7,6 +7,10 @@ import VectorTileWorkerSource from 'mapbox-gl/src/source/vector_tile_worker_sour
 import RasterDEMTileWorkerSource from 'mapbox-gl/src/source/raster_dem_tile_worker_source';
 import GeoJSONWorkerSource from 'mapbox-gl/src/source/geojson_worker_source';
 import { plugin as globalRTLTextPlugin } from 'mapbox-gl/src/source/rtl_text_plugin';
+import vt from '@mapbox/vector-tile';
+import Protobuf from 'pbf';
+
+
 
 import type {
     WorkerSource,
@@ -19,6 +23,8 @@ import type {
 
 import type {WorkerGlobalScopeInterface} from 'mapbox-gl/src/util/web_worker';
 import type {Callback} from 'mapbox-gl/src/types/callback';
+
+import { USE_ONLINE } from './mbtiles_source';
 
 /**
  * @private
@@ -165,7 +171,33 @@ export default class Worker {
                 }
             };
 
-            this.workerSources[mapId][type][source] = new (this.workerSourceTypes[type]: any)((actor: any), this.getLayerIndex(mapId));
+            //Custom load data for offline vector
+            var loadOffData = function(params, callback){
+                //callback(null, params.);
+                var oKeys = Object.keys(this.loaded).sort(function(a, b) {
+                    return a - b;
+                });
+                var i = 0;
+                while(Object.keys(this.loaded).length>10){
+                    delete this.loaded[oKeys[i]];
+                    i++;
+                }
+
+                callback(null, {
+                    vectorTile: new vt.VectorTile(new Protobuf(params.customData)),
+                    rawData: params.customData,
+                    cacheControl: null,
+                    expires: null
+                });
+            }
+
+            if(USE_ONLINE){
+                this.workerSources[mapId][type][source] = new (this.workerSourceTypes[type]: any)((actor: any), this.getLayerIndex(mapId));
+            }
+            else{
+                this.workerSources[mapId][type][source] = new (this.workerSourceTypes[type]: any)((actor: any), this.getLayerIndex(mapId), loadOffData);
+            } 
+            
         }
 
         return this.workerSources[mapId][type][source];

@@ -29,6 +29,7 @@
     'cordova' in window ? document.addEventListener('deviceready', init, false) : init()
 
     function init () {
+
         new mapboxgl.OfflineMap({
             container: 'map',
             style: 'styles/osm-bright/style-offline.json',
