@@ -2,14 +2,19 @@ import fs from 'fs';
 import sourcemaps from 'rollup-plugin-sourcemaps';
 import {plugins} from './build/rollup_plugins';
 
-const production = process.env.BUILD === 'production';
-const outputFile = production ? 'www/mapbox-gl-cordova-offline.js' : 'www/mapbox-gl-cordova-offline-dev.js';
+const version = JSON.parse(fs.readFileSync('package.json')).version;
+const {BUILD, MINIFY} = process.env;
+const minified = MINIFY === 'true';
+const production = BUILD === 'production';
+const outputFile =
+    !production ? 'www/mapbox-gl-cordova-offline-dev.js':
+    minified ? 'www/mapbox-gl-cordova-offline.js'  : 'www/mapbox-gl-cordova-offline-unminified.js';
 
 const config = [{
     // First, use code splitting to bundle GL JS into three "chunks":
     // - rollup/build/index.js: the main module, plus all its dependencies not shared by the worker module
     // - rollup/build/worker.js: the worker module, plus all dependencies not shared by the main module
-    // - rollup/build/chunk1.js: the set of modules that are dependencies of both the main module and the worker module
+    // - rollup/build/shared.js: the set of modules that are dependencies of both the main module and the worker module
     //
     // This is also where we do all of our source transformations: removing
     // flow annotations, transpiling ES6 features using buble, inlining shader
@@ -19,7 +24,8 @@ const config = [{
         dir: 'rollup/build/mapboxgl',
         format: 'amd',
         sourcemap: 'inline',
-        indent: false
+        indent: false,
+        chunkFileNames: 'shared.js'
     },
     experimentalCodeSplitting: true,
     treeshake: production,
@@ -35,7 +41,8 @@ const config = [{
         format: 'umd',
         sourcemap: production ? true : 'inline',
         indent: false,
-        intro: fs.readFileSync(require.resolve('./rollup/bundle_prelude.js'), 'utf8')
+        intro: fs.readFileSync(require.resolve('./rollup/bundle_prelude.js'), 'utf8'),
+        banner: `/* Mapbox GL JS is licensed under the 3-Clause BSD License. Full text of license: https://github.com/mapbox/mapbox-gl-js/blob/v${version}/LICENSE.txt */`
     },
     treeshake: false,
     plugins: [
