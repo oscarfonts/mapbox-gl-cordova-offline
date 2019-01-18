@@ -19,6 +19,7 @@ import type {
 
 import type {WorkerGlobalScopeInterface} from 'mapbox-gl/src/util/web_worker';
 import type {Callback} from 'mapbox-gl/src/types/callback';
+import type {LayerSpecification} from 'mapbox-gl/src/style-spec/types';
 
 /**
  * @private
@@ -54,12 +55,13 @@ export default class Worker {
             this.workerSourceTypes[name] = WorkerSource;
         };
 
-        this.self.registerRTLTextPlugin = (rtlTextPlugin: {applyArabicShaping: Function, processBidirectionalText: Function}) => {
+        this.self.registerRTLTextPlugin = (rtlTextPlugin: {applyArabicShaping: Function, processBidirectionalText: Function, processStyledBidirectionalText?: Function}) => {
             if (globalRTLTextPlugin.isLoaded()) {
                 throw new Error('RTL text plugin already registered.');
             }
             globalRTLTextPlugin['applyArabicShaping'] = rtlTextPlugin.applyArabicShaping;
             globalRTLTextPlugin['processBidirectionalText'] = rtlTextPlugin.processBidirectionalText;
+            globalRTLTextPlugin['processStyledBidirectionalText'] = rtlTextPlugin.processStyledBidirectionalText;
         };
     }
 
@@ -74,6 +76,7 @@ export default class Worker {
     }
 
     loadTile(mapId: string, params: WorkerTileParameters & {type: string}, callback: WorkerTileCallback) {
+        assert(params.type);
         this.getWorkerSource(mapId, params.type, params.source).loadTile(params, callback);
     }
 
@@ -82,14 +85,17 @@ export default class Worker {
     }
 
     reloadTile(mapId: string, params: WorkerTileParameters & {type: string}, callback: WorkerTileCallback) {
+        assert(params.type);
         this.getWorkerSource(mapId, params.type, params.source).reloadTile(params, callback);
     }
 
     abortTile(mapId: string, params: TileParameters & {type: string}, callback: WorkerTileCallback) {
+        assert(params.type);
         this.getWorkerSource(mapId, params.type, params.source).abortTile(params, callback);
     }
 
     removeTile(mapId: string, params: TileParameters & {type: string}, callback: WorkerTileCallback) {
+        assert(params.type);
         this.getWorkerSource(mapId, params.type, params.source).removeTile(params, callback);
     }
 
@@ -98,6 +104,9 @@ export default class Worker {
     }
 
     removeSource(mapId: string, params: {source: string} & {type: string}, callback: WorkerTileCallback) {
+        assert(params.type);
+        assert(params.source);
+
         if (!this.workerSources[mapId] ||
             !this.workerSources[mapId][params.type] ||
             !this.workerSources[mapId][params.type][params.source]) {
