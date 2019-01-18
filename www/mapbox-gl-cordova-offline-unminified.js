@@ -31,7 +31,7 @@ function createCommonjsModule(fn, module) {
 	return module = { exports: {} }, fn(module, module.exports), module.exports;
 }
 
-var version = "0.51.0";
+var version = "0.52.0";
 
 var unitbezier = UnitBezier;
 function UnitBezier(p1x, p1y, p2x, p2y) {
@@ -509,16 +509,8 @@ var exported = {
     hardwareConcurrency: self.navigator.hardwareConcurrency || 4,
     get devicePixelRatio() {
         return self.devicePixelRatio;
-    },
-    supportsWebp: false
+    }
 };
-if (self.document) {
-    var webpImgTest = self.document.createElement('img');
-    webpImgTest.onload = function () {
-        exported.supportsWebp = true;
-    };
-    webpImgTest.src = 'data:image/webp;base64,UklGRh4AAABXRUJQVlA4TBEAAAAvAQAAAAfQ//73v/+BiOh/AAA=';
-}
 
 var config = {
     API_URL: 'https://api.mapbox.com',
@@ -533,6 +525,52 @@ var config = {
     ACCESS_TOKEN: null,
     MAX_PARALLEL_IMAGE_REQUESTS: 16
 };
+
+var exported$1 = {
+    supported: false,
+    testSupport: testSupport
+};
+var glForTesting;
+var webpCheckComplete = false;
+var webpImgTest;
+if (self.document) {
+    webpImgTest = self.document.createElement('img');
+    webpImgTest.onload = function () {
+        if (glForTesting) {
+            testWebpTextureUpload(glForTesting);
+        }
+        glForTesting = null;
+    };
+    webpImgTest.onerror = function () {
+        webpCheckComplete = true;
+        glForTesting = null;
+    };
+    webpImgTest.src = 'data:image/webp;base64,UklGRh4AAABXRUJQVlA4TBEAAAAvAQAAAAfQ//73v/+BiOh/AAA=';
+}
+function testSupport(gl) {
+    if (webpCheckComplete || !webpImgTest) {
+        return;
+    }
+    if (!webpImgTest.complete) {
+        glForTesting = gl;
+        return;
+    }
+    testWebpTextureUpload(gl);
+}
+function testWebpTextureUpload(gl) {
+    var texture = gl.createTexture();
+    gl.bindTexture(gl.TEXTURE_2D, texture);
+    try {
+        gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, webpImgTest);
+        if (gl.isContextLost()) {
+            return;
+        }
+        exported$1.supported = true;
+    } catch (e) {
+    }
+    gl.deleteTexture(texture);
+    webpCheckComplete = true;
+}
 
 var help = 'See https://www.mapbox.com/api-documentation/#access-tokens';
 var telemEventKey = 'mapbox.eventData';
@@ -598,24 +636,46 @@ var normalizeSpriteURL = function (url, format, extension, accessToken) {
     return makeAPIURL(urlObject, accessToken);
 };
 var imageExtensionRe = /(\.(png|jpg)\d*)(?=$)/;
+var extensionRe = /\.[\w]+$/;
 var normalizeTileURL = function (tileURL, sourceURL, tileSize) {
     if (!sourceURL || !isMapboxURL(sourceURL)) {
         return tileURL;
     }
     var urlObject = parseUrl(tileURL);
     var suffix = exported.devicePixelRatio >= 2 || tileSize === 512 ? '@2x' : '';
-    var extension = exported.supportsWebp ? '.webp' : '$1';
+    var extension = exported$1.supported ? '.webp' : '$1';
     urlObject.path = urlObject.path.replace(imageExtensionRe, '' + suffix + extension);
-    replaceTempAccessToken(urlObject.params);
-    return formatUrl(urlObject);
+    urlObject.path = '/v4' + urlObject.path;
+    return makeAPIURL(urlObject);
 };
-function replaceTempAccessToken(params) {
-    for (var i = 0; i < params.length; i++) {
-        if (params[i].indexOf('access_token=tk.') === 0) {
-            params[i] = 'access_token=' + (config.ACCESS_TOKEN || '');
-        }
+var canonicalizeTileURL = function (url) {
+    var version$$1 = '/v4/';
+    var urlObject = parseUrl(url);
+    if (!urlObject.path.match(/(^\/v4\/)/) || !urlObject.path.match(extensionRe)) {
+        return url;
     }
-}
+    var result = 'mapbox://tiles/';
+    result += urlObject.path.replace(version$$1, '');
+    var params = urlObject.params.filter(function (p) {
+        return !p.match(/^access_token=/);
+    });
+    if (params.length) {
+        result += '?' + params.join('&');
+    }
+    return result;
+};
+var canonicalizeTileset = function (tileJSON, sourceURL) {
+    if (!isMapboxURL(sourceURL)) {
+        return tileJSON.tiles || [];
+    }
+    var canonical = [];
+    for (var i = 0, list = tileJSON.tiles; i < list.length; i += 1) {
+        var url = list[i];
+        var canonicalUrl = canonicalizeTileURL(url);
+        canonical.push(canonicalUrl);
+    }
+    return canonical;
+};
 var urlRe = /^(\w+):\/\/([^/?]*)(\/[^?]+)?\??(.+)?/;
 function parseUrl(url) {
     var parts = url.match(urlRe);
@@ -875,6 +935,9 @@ function makeFetchRequest(requestParameters, callback) {
             callback(new AJAXError(response.statusText, response.status, requestParameters.url));
         }
     }).catch(function (error) {
+        if (error.code === 20) {
+            return;
+        }
         callback(new Error(error.message));
     });
     return {
@@ -937,8 +1000,12 @@ function sameOrigin(url) {
     return a.protocol === self.document.location.protocol && a.host === self.document.location.host;
 }
 var transparentPngUrl = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAAC0lEQVQYV2NgAAIAAAUAAarVyFEAAAAASUVORK5CYII=';
-var imageQueue = [];
-var numImageRequests = 0;
+var imageQueue, numImageRequests;
+var resetImageRequestQueue = function () {
+    imageQueue = [];
+    numImageRequests = 0;
+};
+resetImageRequestQueue();
 var getImage = function (requestParameters, callback) {
     if (numImageRequests >= config.MAX_PARALLEL_IMAGE_REQUESTS) {
         var queued = {
@@ -954,17 +1021,25 @@ var getImage = function (requestParameters, callback) {
         };
     }
     numImageRequests++;
-    return getArrayBuffer(requestParameters, function (err, data, cacheControl, expires) {
+    var advanced = false;
+    var advanceImageRequestQueue = function () {
+        if (advanced) {
+            return;
+        }
+        advanced = true;
         numImageRequests--;
         while (imageQueue.length && numImageRequests < config.MAX_PARALLEL_IMAGE_REQUESTS) {
             var ref = imageQueue.shift();
             var requestParameters = ref.requestParameters;
-            var callback$1 = ref.callback;
+            var callback = ref.callback;
             var cancelled = ref.cancelled;
             if (!cancelled) {
-                getImage(requestParameters, callback$1);
+                getImage(requestParameters, callback);
             }
         }
+    };
+    var request = getArrayBuffer(requestParameters, function (err, data, cacheControl, expires) {
+        advanceImageRequestQueue();
         if (err) {
             callback(err);
         } else if (data) {
@@ -983,6 +1058,12 @@ var getImage = function (requestParameters, callback) {
             img.src = data.byteLength ? URL.createObjectURL(blob) : transparentPngUrl;
         }
     });
+    return {
+        cancel: function () {
+            request.cancel();
+            advanceImageRequestQueue();
+        }
+    };
 };
 var getVideo = function (urls, callback) {
     var video = self.document.createElement('video');
@@ -1054,10 +1135,10 @@ Evented.prototype.once = function once(type, listener) {
     _addEventListener(type, listener, this._oneTimeListeners);
     return this;
 };
-Evented.prototype.fire = function fire(event) {
+Evented.prototype.fire = function fire(event, properties) {
     var this$1 = this;
     if (typeof event === 'string') {
-        event = new Event(event, arguments[1] || {});
+        event = new Event(event, properties || {});
     }
     var type = event.type;
     if (this.listens(type)) {
@@ -1117,7 +1198,7 @@ var filter_operator = {"type":"enum","values":{"==":{},"!=":{},">":{},">=":{},"<
 var geometry_type = {"type":"enum","values":{"Point":{},"LineString":{},"Polygon":{}}};
 var function_stop = {"type":"array","minimum":0,"maximum":22,"value":["number","color"],"length":2};
 var expression = {"type":"array","value":"*","minimum":1};
-var expression_name = {"type":"enum","values":{"let":{"group":"Variable binding"},"var":{"group":"Variable binding"},"literal":{"group":"Types"},"array":{"group":"Types"},"at":{"group":"Lookup"},"case":{"group":"Decision"},"match":{"group":"Decision"},"coalesce":{"group":"Decision"},"step":{"group":"Ramps, scales, curves"},"interpolate":{"group":"Ramps, scales, curves"},"interpolate-hcl":{"group":"Ramps, scales, curves"},"interpolate-lab":{"group":"Ramps, scales, curves"},"ln2":{"group":"Math"},"pi":{"group":"Math"},"e":{"group":"Math"},"typeof":{"group":"Types"},"string":{"group":"Types"},"number":{"group":"Types"},"boolean":{"group":"Types"},"object":{"group":"Types"},"collator":{"group":"Types"},"format":{"group":"Types"},"to-string":{"group":"Types"},"to-number":{"group":"Types"},"to-boolean":{"group":"Types"},"to-rgba":{"group":"Color"},"to-color":{"group":"Types"},"rgb":{"group":"Color"},"rgba":{"group":"Color"},"get":{"group":"Lookup"},"has":{"group":"Lookup"},"length":{"group":"Lookup"},"properties":{"group":"Feature data"},"feature-state":{"group":"Feature data"},"geometry-type":{"group":"Feature data"},"id":{"group":"Feature data"},"zoom":{"group":"Zoom"},"heatmap-density":{"group":"Heatmap"},"line-progress":{"group":"Heatmap"},"+":{"group":"Math"},"*":{"group":"Math"},"-":{"group":"Math"},"/":{"group":"Math"},"%":{"group":"Math"},"^":{"group":"Math"},"sqrt":{"group":"Math"},"log10":{"group":"Math"},"ln":{"group":"Math"},"log2":{"group":"Math"},"sin":{"group":"Math"},"cos":{"group":"Math"},"tan":{"group":"Math"},"asin":{"group":"Math"},"acos":{"group":"Math"},"atan":{"group":"Math"},"min":{"group":"Math"},"max":{"group":"Math"},"round":{"group":"Math"},"abs":{"group":"Math"},"ceil":{"group":"Math"},"floor":{"group":"Math"},"==":{"group":"Decision"},"!=":{"group":"Decision"},">":{"group":"Decision"},"<":{"group":"Decision"},">=":{"group":"Decision"},"<=":{"group":"Decision"},"all":{"group":"Decision"},"any":{"group":"Decision"},"!":{"group":"Decision"},"is-supported-script":{"group":"String"},"upcase":{"group":"String"},"downcase":{"group":"String"},"concat":{"group":"String"},"resolved-locale":{"group":"String"}}};
+var expression_name = {"type":"enum","values":{"let":{"group":"Variable binding"},"var":{"group":"Variable binding"},"literal":{"group":"Types"},"array":{"group":"Types"},"at":{"group":"Lookup"},"case":{"group":"Decision"},"match":{"group":"Decision"},"coalesce":{"group":"Decision"},"step":{"group":"Ramps, scales, curves"},"interpolate":{"group":"Ramps, scales, curves"},"interpolate-hcl":{"group":"Ramps, scales, curves"},"interpolate-lab":{"group":"Ramps, scales, curves"},"ln2":{"group":"Math"},"pi":{"group":"Math"},"e":{"group":"Math"},"typeof":{"group":"Types"},"string":{"group":"Types"},"number":{"group":"Types"},"boolean":{"group":"Types"},"object":{"group":"Types"},"collator":{"group":"Types"},"format":{"group":"Types"},"to-string":{"group":"Types"},"to-number":{"group":"Types"},"to-boolean":{"group":"Types"},"to-rgba":{"group":"Color"},"to-color":{"group":"Types"},"rgb":{"group":"Color"},"rgba":{"group":"Color"},"get":{"group":"Lookup"},"has":{"group":"Lookup"},"length":{"group":"Lookup"},"properties":{"group":"Feature data"},"feature-state":{"group":"Feature data"},"geometry-type":{"group":"Feature data"},"id":{"group":"Feature data"},"zoom":{"group":"Zoom"},"heatmap-density":{"group":"Heatmap"},"line-progress":{"group":"Feature data"},"+":{"group":"Math"},"*":{"group":"Math"},"-":{"group":"Math"},"/":{"group":"Math"},"%":{"group":"Math"},"^":{"group":"Math"},"sqrt":{"group":"Math"},"log10":{"group":"Math"},"ln":{"group":"Math"},"log2":{"group":"Math"},"sin":{"group":"Math"},"cos":{"group":"Math"},"tan":{"group":"Math"},"asin":{"group":"Math"},"acos":{"group":"Math"},"atan":{"group":"Math"},"min":{"group":"Math"},"max":{"group":"Math"},"round":{"group":"Math"},"abs":{"group":"Math"},"ceil":{"group":"Math"},"floor":{"group":"Math"},"==":{"group":"Decision"},"!=":{"group":"Decision"},">":{"group":"Decision"},"<":{"group":"Decision"},">=":{"group":"Decision"},"<=":{"group":"Decision"},"all":{"group":"Decision"},"any":{"group":"Decision"},"!":{"group":"Decision"},"is-supported-script":{"group":"String"},"upcase":{"group":"String"},"downcase":{"group":"String"},"concat":{"group":"String"},"resolved-locale":{"group":"String"}}};
 var light = {"anchor":{"type":"enum","default":"viewport","values":{"map":{},"viewport":{}},"property-type":"data-constant","transition":false,"expression":{"interpolated":false,"parameters":["zoom"]}},"position":{"type":"array","default":[1.15,210,30],"length":3,"value":"number","property-type":"data-constant","transition":true,"expression":{"interpolated":true,"parameters":["zoom"]}},"color":{"type":"color","property-type":"data-constant","default":"#ffffff","expression":{"interpolated":true,"parameters":["zoom"]},"transition":true},"intensity":{"type":"number","property-type":"data-constant","default":0.5,"minimum":0,"maximum":1,"expression":{"interpolated":true,"parameters":["zoom"]},"transition":true}};
 var paint = ["paint_fill","paint_line","paint_circle","paint_heatmap","paint_fill-extrusion","paint_symbol","paint_raster","paint_hillshade","paint_background"];
 var paint_fill = {"fill-antialias":{"type":"boolean","default":true,"expression":{"interpolated":false,"parameters":["zoom"]},"property-type":"data-constant"},"fill-opacity":{"type":"number","default":1,"minimum":0,"maximum":1,"transition":true,"expression":{"interpolated":true,"parameters":["zoom","feature","feature-state"]},"property-type":"data-driven"},"fill-color":{"type":"color","default":"#000000","transition":true,"requires":[{"!":"fill-pattern"}],"expression":{"interpolated":true,"parameters":["zoom","feature","feature-state"]},"property-type":"data-driven"},"fill-outline-color":{"type":"color","transition":true,"requires":[{"!":"fill-pattern"},{"fill-antialias":true}],"expression":{"interpolated":true,"parameters":["zoom","feature","feature-state"]},"property-type":"data-driven"},"fill-translate":{"type":"array","value":"number","length":2,"default":[0,0],"transition":true,"units":"pixels","expression":{"interpolated":true,"parameters":["zoom"]},"property-type":"data-constant"},"fill-translate-anchor":{"type":"enum","values":{"map":{},"viewport":{}},"default":"map","requires":["fill-translate"],"expression":{"interpolated":false,"parameters":["zoom"]},"property-type":"data-constant"},"fill-pattern":{"type":"string","transition":true,"expression":{"interpolated":false,"parameters":["zoom","feature"]},"property-type":"cross-faded-data-driven"}};
@@ -2987,7 +3068,7 @@ CompoundExpression.parse = function parse(args, context) {
         }
     }
     if (overloads.length === 1) {
-        context.errors.push.apply(context.errors, signatureContext.errors);
+        (ref$1 = context.errors).push.apply(ref$1, signatureContext.errors);
     } else {
         var expected$1 = overloads.length ? overloads : availableOverloads;
         var signatures = expected$1.map(function (ref) {
@@ -3005,6 +3086,7 @@ CompoundExpression.parse = function parse(args, context) {
         context.error('Expected arguments of type ' + signatures + ', but found (' + actualTypes.join(', ') + ') instead.');
     }
     return null;
+    var ref$1;
 };
 CompoundExpression.register = function register(registry, definitions) {
     CompoundExpression.definitions = definitions;
@@ -3416,72 +3498,6 @@ Step.prototype.serialize = function serialize() {
     return serialized;
 };
 
-var unitbezier$1 = UnitBezier$1;
-function UnitBezier$1(p1x, p1y, p2x, p2y) {
-    this.cx = 3 * p1x;
-    this.bx = 3 * (p2x - p1x) - this.cx;
-    this.ax = 1 - this.cx - this.bx;
-    this.cy = 3 * p1y;
-    this.by = 3 * (p2y - p1y) - this.cy;
-    this.ay = 1 - this.cy - this.by;
-    this.p1x = p1x;
-    this.p1y = p2y;
-    this.p2x = p2x;
-    this.p2y = p2y;
-}
-UnitBezier$1.prototype.sampleCurveX = function (t) {
-    return ((this.ax * t + this.bx) * t + this.cx) * t;
-};
-UnitBezier$1.prototype.sampleCurveY = function (t) {
-    return ((this.ay * t + this.by) * t + this.cy) * t;
-};
-UnitBezier$1.prototype.sampleCurveDerivativeX = function (t) {
-    return (3 * this.ax * t + 2 * this.bx) * t + this.cx;
-};
-UnitBezier$1.prototype.solveCurveX = function (x, epsilon) {
-    var this$1 = this;
-    if (typeof epsilon === 'undefined') {
-        epsilon = 0.000001;
-    }
-    var t0, t1, t2, x2, i;
-    for (t2 = x, i = 0; i < 8; i++) {
-        x2 = this$1.sampleCurveX(t2) - x;
-        if (Math.abs(x2) < epsilon) {
-            return t2;
-        }
-        var d2 = this$1.sampleCurveDerivativeX(t2);
-        if (Math.abs(d2) < 0.000001) {
-            break;
-        }
-        t2 = t2 - x2 / d2;
-    }
-    t0 = 0;
-    t1 = 1;
-    t2 = x;
-    if (t2 < t0) {
-        return t0;
-    }
-    if (t2 > t1) {
-        return t1;
-    }
-    while (t0 < t1) {
-        x2 = this$1.sampleCurveX(t2);
-        if (Math.abs(x2 - x) < epsilon) {
-            return t2;
-        }
-        if (x > x2) {
-            t0 = t2;
-        } else {
-            t1 = t2;
-        }
-        t2 = (t1 - t0) * 0.5 + t0;
-    }
-    return t2;
-};
-UnitBezier$1.prototype.solve = function (x, epsilon) {
-    return this.sampleCurveY(this.solveCurveX(x, epsilon));
-};
-
 function number(a, b, t) {
     return a * (1 - t) + b * t;
 }
@@ -3612,7 +3628,7 @@ Interpolate.interpolationFactor = function interpolationFactor(interpolation, in
         t = exponentialInterpolation(input, 1, lower, upper);
     } else if (interpolation.name === 'cubic-bezier') {
         var c = interpolation.controlPoints;
-        var ub = new unitbezier$1(c[0], c[1], c[2], c[3]);
+        var ub = new unitbezier(c[0], c[1], c[2], c[3]);
         t = ub.solve(exponentialInterpolation(input, 1, lower, upper));
     }
     return t;
@@ -6259,10 +6275,10 @@ function validateLayer(options) {
         style: options.style,
         styleSpec: options.styleSpec,
         objectElementValidators: {
-            '*': function () {
+            '*': function _() {
                 return [];
             },
-            type: function () {
+            type: function type() {
                 return validate({
                     key: key + '.type',
                     value: layer.type,
@@ -6274,7 +6290,7 @@ function validateLayer(options) {
                 });
             },
             filter: validateFilter,
-            layout: function (options) {
+            layout: function layout(options) {
                 return validateObject({
                     layer: layer,
                     key: options.key,
@@ -6282,13 +6298,13 @@ function validateLayer(options) {
                     style: options.style,
                     styleSpec: options.styleSpec,
                     objectElementValidators: {
-                        '*': function (options) {
+                        '*': function _(options) {
                             return validateLayoutProperty(extend$1({ layerType: type }, options));
                         }
                     }
                 });
             },
-            paint: function (options) {
+            paint: function paint(options) {
                 return validateObject({
                     layer: layer,
                     key: options.key,
@@ -6296,7 +6312,7 @@ function validateLayer(options) {
                     style: options.style,
                     styleSpec: options.styleSpec,
                     objectElementValidators: {
-                        '*': function (options) {
+                        '*': function _(options) {
                             return validatePaintProperty(extend$1({ layerType: type }, options));
                         }
                     }
@@ -6443,7 +6459,7 @@ function validateFormatted(options) {
 }
 
 var VALIDATORS = {
-    '*': function () {
+    '*': function _() {
         return [];
     },
     'array': validateArray,
@@ -6504,7 +6520,7 @@ function validateStyleMin(style, styleSpec) {
         style: style,
         objectElementValidators: {
             glyphs: validateGlyphsURL,
-            '*': function () {
+            '*': function _() {
                 return [];
             }
         }
@@ -6532,7 +6548,10 @@ function sortErrors(errors) {
 }
 function wrapCleanErrors(inner) {
     return function () {
-        return sortErrors(inner.apply(this, arguments));
+        var args = [], len = arguments.length;
+        while (len--)
+            args[len] = arguments[len];
+        return sortErrors(inner.apply(this, args));
     };
 }
 
@@ -6706,14 +6725,14 @@ function register(name, klass, options) {
     };
 }
 register('Object', Object);
-gridIndex.serialize = function serializeGrid(grid, transferables) {
+gridIndex.serialize = function serialize(grid, transferables) {
     var buffer = grid.toArrayBuffer();
     if (transferables) {
         transferables.push(buffer);
     }
     return { buffer: buffer };
 };
-gridIndex.deserialize = function deserializeGrid(serialized) {
+gridIndex.deserialize = function deserialize(serialized) {
     return new gridIndex(serialized.buffer);
 };
 register('Grid', gridIndex);
@@ -7344,7 +7363,7 @@ var plugin = {
     applyArabicShaping: null,
     processBidirectionalText: null,
     processStyledBidirectionalText: null,
-    isLoaded: function () {
+    isLoaded: function isLoaded() {
         return foregroundLoadComplete || plugin.applyArabicShaping != null;
     }
 };
@@ -7789,6 +7808,8 @@ var StyleLayer = function (Evented$$1) {
         return this._unevaluatedLayout.getValue(name);
     };
     StyleLayer.prototype.setLayoutProperty = function setLayoutProperty(name, value, options) {
+        if (options === void 0)
+            options = {};
         if (value !== null && value !== undefined) {
             var key = 'layers.' + this.id + '.layout.' + name;
             if (this._validate(validateLayoutProperty$1, key, name, value, options)) {
@@ -7809,6 +7830,8 @@ var StyleLayer = function (Evented$$1) {
         }
     };
     StyleLayer.prototype.setPaintProperty = function setPaintProperty(name, value, options) {
+        if (options === void 0)
+            options = {};
         if (value !== null && value !== undefined) {
             var key = 'layers.' + this.id + '.paint.' + name;
             if (this._validate(validatePaintProperty$1, key, name, value, options)) {
@@ -7876,6 +7899,8 @@ var StyleLayer = function (Evented$$1) {
         });
     };
     StyleLayer.prototype._validate = function _validate(validate, key, name, value, options) {
+        if (options === void 0)
+            options = {};
         if (options && options.validate === false) {
             return false;
         }
@@ -9218,11 +9243,11 @@ SegmentVector.simpleSegment = function simpleSegment(vertexOffset, primitiveOffs
 SegmentVector.MAX_VERTEX_ARRAY_LENGTH = Math.pow(2, 16) - 1;
 register('SegmentVector', SegmentVector);
 
-var packUint8ToFloat = function pack(a, b) {
+function packUint8ToFloat(a, b) {
     a = clamp(Math.floor(a), 0, 255);
     b = clamp(Math.floor(b), 0, 255);
     return 256 * a + b;
-};
+}
 
 var FeaturePositionMap = function FeaturePositionMap() {
     this.ids = [];
@@ -15559,9 +15584,7 @@ function getMercCoords(x, y, z) {
 }
 
 var LngLatBounds = function LngLatBounds(sw, ne) {
-    if (!sw) {
-        return;
-    } else if (ne) {
+    if (!sw) ; else if (ne) {
         this.setSouthWest(sw).setNorthEast(ne);
     } else if (sw.length === 4) {
         this.setSouthWest([
@@ -15786,6 +15809,9 @@ OverscaledTileID.prototype.scaledTo = function scaledTo(targetZ) {
     }
 };
 OverscaledTileID.prototype.isChildOf = function isChildOf(parent) {
+    if (parent.wrap !== this.wrap) {
+        return false;
+    }
     var zDifference = this.canonical.z - parent.canonical.z;
     return parent.overscaledZ === 0 || parent.overscaledZ < this.overscaledZ && parent.canonical.x === this.canonical.x >> zDifference && parent.canonical.y === this.canonical.y >> zDifference;
 };
@@ -16962,8 +16988,10 @@ exports.uniqueId = uniqueId;
 exports.Actor = Actor;
 exports.pick = pick;
 exports.normalizeSourceURL = normalizeSourceURL;
+exports.canonicalizeTileset = canonicalizeTileset;
 exports.LngLatBounds = LngLatBounds;
-exports.clamp = clamp;
+exports.mercatorXfromLng = mercatorXfromLng;
+exports.mercatorYfromLat = mercatorYfromLat;
 exports.Event = Event;
 exports.ErrorEvent = ErrorEvent;
 exports.normalizeTileURL = normalizeTileURL;
@@ -17043,13 +17071,12 @@ exports.transformMat3 = transformMat3;
 exports.len = len;
 exports.forEach$1 = forEach;
 exports.UniformColor = UniformColor;
+exports.clamp = clamp;
 exports.StructArrayLayout2i4 = StructArrayLayout2i4;
 exports.StructArrayLayout2ui4 = StructArrayLayout2ui4;
 exports.StructArrayLayout3ui6 = StructArrayLayout3ui6;
 exports.StructArrayLayout1ui2 = StructArrayLayout1ui2;
 exports.LngLat = LngLat;
-exports.mercatorXfromLng = mercatorXfromLng;
-exports.mercatorYfromLat = mercatorYfromLat;
 exports.mercatorZfromAltitude = mercatorZfromAltitude;
 exports.wrap = wrap;
 exports.UnwrappedTileID = UnwrappedTileID;
@@ -17059,6 +17086,7 @@ exports.ease = ease;
 exports.bezier = bezier;
 exports.config = config;
 exports.EvaluationParameters = EvaluationParameters;
+exports.webpSupported = exported$1;
 exports.version = version;
 exports.setRTLTextPlugin = setRTLTextPlugin;
 exports.values = values;
@@ -18835,7 +18863,7 @@ function sortKD(ids, coords, nodeSize, left, right, depth) {
     if (right - left <= nodeSize) {
         return;
     }
-    var m = Math.floor((left + right) / 2);
+    var m = left + right >> 1;
     select(ids, coords, m, left, right, depth % 2);
     sortKD(ids, coords, nodeSize, left, m - 1, depth + 1);
     sortKD(ids, coords, nodeSize, m + 1, right, depth + 1);
@@ -18984,289 +19012,302 @@ function sqDist(ax, ay, bx, by) {
     return dx * dx + dy * dy;
 }
 
-function kdbush(points, getX, getY, nodeSize, ArrayType) {
-    return new KDBush(points, getX, getY, nodeSize, ArrayType);
-}
-function KDBush(points, getX, getY, nodeSize, ArrayType) {
-    var this$1 = this;
-    getX = getX || defaultGetX;
-    getY = getY || defaultGetY;
-    ArrayType = ArrayType || Array;
-    this.nodeSize = nodeSize || 64;
+var defaultGetX = function (p) {
+    return p[0];
+};
+var defaultGetY = function (p) {
+    return p[1];
+};
+var KDBush = function KDBush(points, getX, getY, nodeSize, ArrayType) {
+    if (getX === void 0)
+        getX = defaultGetX;
+    if (getY === void 0)
+        getY = defaultGetY;
+    if (nodeSize === void 0)
+        nodeSize = 64;
+    if (ArrayType === void 0)
+        ArrayType = Float64Array;
+    this.nodeSize = nodeSize;
     this.points = points;
-    this.ids = new ArrayType(points.length);
-    this.coords = new ArrayType(points.length * 2);
+    var IndexArrayType = points.length < 65536 ? Uint16Array : Uint32Array;
+    var ids = this.ids = new IndexArrayType(points.length);
+    var coords = this.coords = new ArrayType(points.length * 2);
     for (var i = 0; i < points.length; i++) {
-        this$1.ids[i] = i;
-        this$1.coords[2 * i] = getX(points[i]);
-        this$1.coords[2 * i + 1] = getY(points[i]);
+        ids[i] = i;
+        coords[2 * i] = getX(points[i]);
+        coords[2 * i + 1] = getY(points[i]);
     }
-    sortKD(this.ids, this.coords, this.nodeSize, 0, this.ids.length - 1, 0);
-}
-KDBush.prototype = {
-    range: function (minX, minY, maxX, maxY) {
-        return range(this.ids, this.coords, minX, minY, maxX, maxY, this.nodeSize);
+    sortKD(ids, coords, nodeSize, 0, ids.length - 1, 0);
+};
+KDBush.prototype.range = function range$1(minX, minY, maxX, maxY) {
+    return range(this.ids, this.coords, minX, minY, maxX, maxY, this.nodeSize);
+};
+KDBush.prototype.within = function within$1(x, y, r) {
+    return within(this.ids, this.coords, x, y, r, this.nodeSize);
+};
+
+var defaultOptions = {
+    minZoom: 0,
+    maxZoom: 16,
+    radius: 40,
+    extent: 512,
+    nodeSize: 64,
+    log: false,
+    reduce: null,
+    initial: function () {
+        return {};
     },
-    within: function (x, y, r) {
-        return within(this.ids, this.coords, x, y, r, this.nodeSize);
+    map: function (props) {
+        return props;
     }
 };
-function defaultGetX(p) {
-    return p[0];
-}
-function defaultGetY(p) {
-    return p[1];
-}
-
-function supercluster(options) {
-    return new SuperCluster(options);
-}
-function SuperCluster(options) {
-    this.options = extend(Object.create(this.options), options);
+var Supercluster = function Supercluster(options) {
+    this.options = extend(Object.create(defaultOptions), options);
     this.trees = new Array(this.options.maxZoom + 1);
-}
-SuperCluster.prototype = {
-    options: {
-        minZoom: 0,
-        maxZoom: 16,
-        radius: 40,
-        extent: 512,
-        nodeSize: 64,
-        log: false,
-        reduce: null,
-        initial: function () {
-            return {};
-        },
-        map: function (props) {
-            return props;
-        }
-    },
-    load: function (points) {
-        var this$1 = this;
-        var log = this.options.log;
-        if (log) {
-            console.time('total time');
-        }
-        var timerId = 'prepare ' + points.length + ' points';
-        if (log) {
-            console.time(timerId);
-        }
-        this.points = points;
-        var clusters = [];
-        for (var i = 0; i < points.length; i++) {
-            if (!points[i].geometry) {
-                continue;
-            }
-            clusters.push(createPointCluster(points[i], i));
-        }
-        this.trees[this.options.maxZoom + 1] = kdbush(clusters, getX, getY, this.options.nodeSize, Float32Array);
-        if (log) {
-            console.timeEnd(timerId);
-        }
-        for (var z = this.options.maxZoom; z >= this.options.minZoom; z--) {
-            var now = +Date.now();
-            clusters = this$1._cluster(clusters, z);
-            this$1.trees[z] = kdbush(clusters, getX, getY, this$1.options.nodeSize, Float32Array);
-            if (log) {
-                console.log('z%d: %d clusters in %dms', z, clusters.length, +Date.now() - now);
-            }
-        }
-        if (log) {
-            console.timeEnd('total time');
-        }
-        return this;
-    },
-    getClusters: function (bbox, zoom) {
-        var this$1 = this;
-        var minLng = ((bbox[0] + 180) % 360 + 360) % 360 - 180;
-        var minLat = Math.max(-90, Math.min(90, bbox[1]));
-        var maxLng = bbox[2] === 180 ? 180 : ((bbox[2] + 180) % 360 + 360) % 360 - 180;
-        var maxLat = Math.max(-90, Math.min(90, bbox[3]));
-        if (bbox[2] - bbox[0] >= 360) {
-            minLng = -180;
-            maxLng = 180;
-        } else if (minLng > maxLng) {
-            var easternHem = this.getClusters([
-                minLng,
-                minLat,
-                180,
-                maxLat
-            ], zoom);
-            var westernHem = this.getClusters([
-                -180,
-                minLat,
-                maxLng,
-                maxLat
-            ], zoom);
-            return easternHem.concat(westernHem);
-        }
-        var tree = this.trees[this._limitZoom(zoom)];
-        var ids = tree.range(lngX(minLng), latY(maxLat), lngX(maxLng), latY(minLat));
-        var clusters = [];
-        for (var i = 0; i < ids.length; i++) {
-            var c = tree.points[ids[i]];
-            clusters.push(c.numPoints ? getClusterJSON(c) : this$1.points[c.index]);
-        }
-        return clusters;
-    },
-    getChildren: function (clusterId) {
-        var this$1 = this;
-        var originId = clusterId >> 5;
-        var originZoom = clusterId % 32;
-        var errorMsg = 'No cluster with the specified id.';
-        var index = this.trees[originZoom];
-        if (!index) {
-            throw new Error(errorMsg);
-        }
-        var origin = index.points[originId];
-        if (!origin) {
-            throw new Error(errorMsg);
-        }
-        var r = this.options.radius / (this.options.extent * Math.pow(2, originZoom - 1));
-        var ids = index.within(origin.x, origin.y, r);
-        var children = [];
-        for (var i = 0; i < ids.length; i++) {
-            var c = index.points[ids[i]];
-            if (c.parentId === clusterId) {
-                children.push(c.numPoints ? getClusterJSON(c) : this$1.points[c.index]);
-            }
-        }
-        if (children.length === 0) {
-            throw new Error(errorMsg);
-        }
-        return children;
-    },
-    getLeaves: function (clusterId, limit, offset) {
-        limit = limit || 10;
-        offset = offset || 0;
-        var leaves = [];
-        this._appendLeaves(leaves, clusterId, limit, offset, 0);
-        return leaves;
-    },
-    getTile: function (z, x, y) {
-        var tree = this.trees[this._limitZoom(z)];
-        var z2 = Math.pow(2, z);
-        var extent = this.options.extent;
-        var r = this.options.radius;
-        var p = r / extent;
-        var top = (y - p) / z2;
-        var bottom = (y + 1 + p) / z2;
-        var tile = { features: [] };
-        this._addTileFeatures(tree.range((x - p) / z2, top, (x + 1 + p) / z2, bottom), tree.points, x, y, z2, tile);
-        if (x === 0) {
-            this._addTileFeatures(tree.range(1 - p / z2, top, 1, bottom), tree.points, z2, y, z2, tile);
-        }
-        if (x === z2 - 1) {
-            this._addTileFeatures(tree.range(0, top, p / z2, bottom), tree.points, -1, y, z2, tile);
-        }
-        return tile.features.length ? tile : null;
-    },
-    getClusterExpansionZoom: function (clusterId) {
-        var this$1 = this;
-        var clusterZoom = clusterId % 32 - 1;
-        while (clusterZoom < this.options.maxZoom) {
-            var children = this$1.getChildren(clusterId);
-            clusterZoom++;
-            if (children.length !== 1) {
-                break;
-            }
-            clusterId = children[0].properties.cluster_id;
-        }
-        return clusterZoom;
-    },
-    _appendLeaves: function (result, clusterId, limit, offset, skipped) {
-        var this$1 = this;
-        var children = this.getChildren(clusterId);
-        for (var i = 0; i < children.length; i++) {
-            var props = children[i].properties;
-            if (props && props.cluster) {
-                if (skipped + props.point_count <= offset) {
-                    skipped += props.point_count;
-                } else {
-                    skipped = this$1._appendLeaves(result, props.cluster_id, limit, offset, skipped);
-                }
-            } else if (skipped < offset) {
-                skipped++;
-            } else {
-                result.push(children[i]);
-            }
-            if (result.length === limit) {
-                break;
-            }
-        }
-        return skipped;
-    },
-    _addTileFeatures: function (ids, points, x, y, z2, tile) {
-        var this$1 = this;
-        for (var i = 0; i < ids.length; i++) {
-            var c = points[ids[i]];
-            var f = {
-                type: 1,
-                geometry: [[
-                        Math.round(this$1.options.extent * (c.x * z2 - x)),
-                        Math.round(this$1.options.extent * (c.y * z2 - y))
-                    ]],
-                tags: c.numPoints ? getClusterProperties(c) : this$1.points[c.index].properties
-            };
-            var id = c.numPoints ? c.id : this$1.points[c.index].id;
-            if (id !== undefined) {
-                f.id = id;
-            }
-            tile.features.push(f);
-        }
-    },
-    _limitZoom: function (z) {
-        return Math.max(this.options.minZoom, Math.min(z, this.options.maxZoom + 1));
-    },
-    _cluster: function (points, zoom) {
-        var this$1 = this;
-        var clusters = [];
-        var r = this.options.radius / (this.options.extent * Math.pow(2, zoom));
-        for (var i = 0; i < points.length; i++) {
-            var p = points[i];
-            if (p.zoom <= zoom) {
-                continue;
-            }
-            p.zoom = zoom;
-            var tree = this$1.trees[zoom + 1];
-            var neighborIds = tree.within(p.x, p.y, r);
-            var numPoints = p.numPoints || 1;
-            var wx = p.x * numPoints;
-            var wy = p.y * numPoints;
-            var clusterProperties = null;
-            if (this$1.options.reduce) {
-                clusterProperties = this$1.options.initial();
-                this$1._accumulate(clusterProperties, p);
-            }
-            var id = (i << 5) + (zoom + 1);
-            for (var j = 0; j < neighborIds.length; j++) {
-                var b = tree.points[neighborIds[j]];
-                if (b.zoom <= zoom) {
-                    continue;
-                }
-                b.zoom = zoom;
-                var numPoints2 = b.numPoints || 1;
-                wx += b.x * numPoints2;
-                wy += b.y * numPoints2;
-                numPoints += numPoints2;
-                b.parentId = id;
-                if (this$1.options.reduce) {
-                    this$1._accumulate(clusterProperties, b);
-                }
-            }
-            if (numPoints === 1) {
-                clusters.push(p);
-            } else {
-                p.parentId = id;
-                clusters.push(createCluster(wx / numPoints, wy / numPoints, id, numPoints, clusterProperties));
-            }
-        }
-        return clusters;
-    },
-    _accumulate: function (clusterProperties, point) {
-        var properties = point.numPoints ? point.properties : this.options.map(this.points[point.index].properties);
-        this.options.reduce(clusterProperties, properties);
+};
+Supercluster.prototype.load = function load(points) {
+    var this$1 = this;
+    var ref = this.options;
+    var log = ref.log;
+    var minZoom = ref.minZoom;
+    var maxZoom = ref.maxZoom;
+    var nodeSize = ref.nodeSize;
+    if (log) {
+        console.time('total time');
     }
+    var timerId = 'prepare ' + points.length + ' points';
+    if (log) {
+        console.time(timerId);
+    }
+    this.points = points;
+    var clusters = [];
+    for (var i = 0; i < points.length; i++) {
+        if (!points[i].geometry) {
+            continue;
+        }
+        clusters.push(createPointCluster(points[i], i));
+    }
+    this.trees[maxZoom + 1] = new KDBush(clusters, getX, getY, nodeSize, Float32Array);
+    if (log) {
+        console.timeEnd(timerId);
+    }
+    for (var z = maxZoom; z >= minZoom; z--) {
+        var now = +Date.now();
+        clusters = this$1._cluster(clusters, z);
+        this$1.trees[z] = new KDBush(clusters, getX, getY, nodeSize, Float32Array);
+        if (log) {
+            console.log('z%d: %d clusters in %dms', z, clusters.length, +Date.now() - now);
+        }
+    }
+    if (log) {
+        console.timeEnd('total time');
+    }
+    return this;
+};
+Supercluster.prototype.getClusters = function getClusters(bbox, zoom) {
+    var this$1 = this;
+    var minLng = ((bbox[0] + 180) % 360 + 360) % 360 - 180;
+    var minLat = Math.max(-90, Math.min(90, bbox[1]));
+    var maxLng = bbox[2] === 180 ? 180 : ((bbox[2] + 180) % 360 + 360) % 360 - 180;
+    var maxLat = Math.max(-90, Math.min(90, bbox[3]));
+    if (bbox[2] - bbox[0] >= 360) {
+        minLng = -180;
+        maxLng = 180;
+    } else if (minLng > maxLng) {
+        var easternHem = this.getClusters([
+            minLng,
+            minLat,
+            180,
+            maxLat
+        ], zoom);
+        var westernHem = this.getClusters([
+            -180,
+            minLat,
+            maxLng,
+            maxLat
+        ], zoom);
+        return easternHem.concat(westernHem);
+    }
+    var tree = this.trees[this._limitZoom(zoom)];
+    var ids = tree.range(lngX(minLng), latY(maxLat), lngX(maxLng), latY(minLat));
+    var clusters = [];
+    for (var i = 0, list = ids; i < list.length; i += 1) {
+        var id = list[i];
+        var c = tree.points[id];
+        clusters.push(c.numPoints ? getClusterJSON(c) : this$1.points[c.index]);
+    }
+    return clusters;
+};
+Supercluster.prototype.getChildren = function getChildren(clusterId) {
+    var this$1 = this;
+    var originId = clusterId >> 5;
+    var originZoom = clusterId % 32;
+    var errorMsg = 'No cluster with the specified id.';
+    var index = this.trees[originZoom];
+    if (!index) {
+        throw new Error(errorMsg);
+    }
+    var origin = index.points[originId];
+    if (!origin) {
+        throw new Error(errorMsg);
+    }
+    var r = this.options.radius / (this.options.extent * Math.pow(2, originZoom - 1));
+    var ids = index.within(origin.x, origin.y, r);
+    var children = [];
+    for (var i = 0, list = ids; i < list.length; i += 1) {
+        var id = list[i];
+        var c = index.points[id];
+        if (c.parentId === clusterId) {
+            children.push(c.numPoints ? getClusterJSON(c) : this$1.points[c.index]);
+        }
+    }
+    if (children.length === 0) {
+        throw new Error(errorMsg);
+    }
+    return children;
+};
+Supercluster.prototype.getLeaves = function getLeaves(clusterId, limit, offset) {
+    limit = limit || 10;
+    offset = offset || 0;
+    var leaves = [];
+    this._appendLeaves(leaves, clusterId, limit, offset, 0);
+    return leaves;
+};
+Supercluster.prototype.getTile = function getTile(z, x, y) {
+    var tree = this.trees[this._limitZoom(z)];
+    var z2 = Math.pow(2, z);
+    var ref = this.options;
+    var extent = ref.extent;
+    var radius = ref.radius;
+    var p = radius / extent;
+    var top = (y - p) / z2;
+    var bottom = (y + 1 + p) / z2;
+    var tile = { features: [] };
+    this._addTileFeatures(tree.range((x - p) / z2, top, (x + 1 + p) / z2, bottom), tree.points, x, y, z2, tile);
+    if (x === 0) {
+        this._addTileFeatures(tree.range(1 - p / z2, top, 1, bottom), tree.points, z2, y, z2, tile);
+    }
+    if (x === z2 - 1) {
+        this._addTileFeatures(tree.range(0, top, p / z2, bottom), tree.points, -1, y, z2, tile);
+    }
+    return tile.features.length ? tile : null;
+};
+Supercluster.prototype.getClusterExpansionZoom = function getClusterExpansionZoom(clusterId) {
+    var this$1 = this;
+    var clusterZoom = clusterId % 32 - 1;
+    while (clusterZoom <= this.options.maxZoom) {
+        var children = this$1.getChildren(clusterId);
+        clusterZoom++;
+        if (children.length !== 1) {
+            break;
+        }
+        clusterId = children[0].properties.cluster_id;
+    }
+    return clusterZoom;
+};
+Supercluster.prototype._appendLeaves = function _appendLeaves(result, clusterId, limit, offset, skipped) {
+    var this$1 = this;
+    var children = this.getChildren(clusterId);
+    for (var i = 0, list = children; i < list.length; i += 1) {
+        var child = list[i];
+        var props = child.properties;
+        if (props && props.cluster) {
+            if (skipped + props.point_count <= offset) {
+                skipped += props.point_count;
+            } else {
+                skipped = this$1._appendLeaves(result, props.cluster_id, limit, offset, skipped);
+            }
+        } else if (skipped < offset) {
+            skipped++;
+        } else {
+            result.push(child);
+        }
+        if (result.length === limit) {
+            break;
+        }
+    }
+    return skipped;
+};
+Supercluster.prototype._addTileFeatures = function _addTileFeatures(ids, points, x, y, z2, tile) {
+    var this$1 = this;
+    for (var i$1 = 0, list = ids; i$1 < list.length; i$1 += 1) {
+        var i = list[i$1];
+        var c = points[i];
+        var f = {
+            type: 1,
+            geometry: [[
+                    Math.round(this$1.options.extent * (c.x * z2 - x)),
+                    Math.round(this$1.options.extent * (c.y * z2 - y))
+                ]],
+            tags: c.numPoints ? getClusterProperties(c) : this$1.points[c.index].properties
+        };
+        var id = c.numPoints ? c.id : this$1.points[c.index].id;
+        if (id !== undefined) {
+            f.id = id;
+        }
+        tile.features.push(f);
+    }
+};
+Supercluster.prototype._limitZoom = function _limitZoom(z) {
+    return Math.max(this.options.minZoom, Math.min(z, this.options.maxZoom + 1));
+};
+Supercluster.prototype._cluster = function _cluster(points, zoom) {
+    var this$1 = this;
+    var clusters = [];
+    var ref = this.options;
+    var radius = ref.radius;
+    var extent = ref.extent;
+    var reduce = ref.reduce;
+    var initial = ref.initial;
+    var r = radius / (extent * Math.pow(2, zoom));
+    for (var i = 0; i < points.length; i++) {
+        var p = points[i];
+        if (p.zoom <= zoom) {
+            continue;
+        }
+        p.zoom = zoom;
+        var tree = this$1.trees[zoom + 1];
+        var neighborIds = tree.within(p.x, p.y, r);
+        var numPoints = p.numPoints || 1;
+        var wx = p.x * numPoints;
+        var wy = p.y * numPoints;
+        var clusterProperties = null;
+        if (reduce) {
+            clusterProperties = initial();
+            this$1._accumulate(clusterProperties, p);
+        }
+        var id = (i << 5) + (zoom + 1);
+        for (var i$1 = 0, list = neighborIds; i$1 < list.length; i$1 += 1) {
+            var neighborId = list[i$1];
+            var b = tree.points[neighborId];
+            if (b.zoom <= zoom) {
+                continue;
+            }
+            b.zoom = zoom;
+            var numPoints2 = b.numPoints || 1;
+            wx += b.x * numPoints2;
+            wy += b.y * numPoints2;
+            numPoints += numPoints2;
+            b.parentId = id;
+            if (reduce) {
+                this$1._accumulate(clusterProperties, b);
+            }
+        }
+        if (numPoints === 1) {
+            clusters.push(p);
+        } else {
+            p.parentId = id;
+            clusters.push(createCluster(wx / numPoints, wy / numPoints, id, numPoints, clusterProperties));
+        }
+    }
+    return clusters;
+};
+Supercluster.prototype._accumulate = function _accumulate(clusterProperties, point) {
+    var ref = this.options;
+    var map = ref.map;
+    var reduce = ref.reduce;
+    var properties = point.numPoints ? point.properties : map(this.points[point.index].properties);
+    reduce(clusterProperties, properties);
 };
 function createCluster(x, y, id, numPoints, properties) {
     return {
@@ -19280,10 +19321,12 @@ function createCluster(x, y, id, numPoints, properties) {
     };
 }
 function createPointCluster(p, id) {
-    var coords = p.geometry.coordinates;
+    var ref = p.geometry.coordinates;
+    var x = ref[0];
+    var y = ref[1];
     return {
-        x: lngX(coords[0]),
-        y: latY(coords[1]),
+        x: lngX(x),
+        y: latY(y),
         zoom: Infinity,
         index: id,
         parentId: -1
@@ -19317,7 +19360,8 @@ function lngX(lng) {
     return lng / 360 + 0.5;
 }
 function latY(lat) {
-    var sin = Math.sin(lat * Math.PI / 180), y = 0.5 - 0.25 * Math.log((1 + sin) / (1 - sin)) / Math.PI;
+    var sin = Math.sin(lat * Math.PI / 180);
+    var y = 0.5 - 0.25 * Math.log((1 + sin) / (1 - sin)) / Math.PI;
     return y < 0 ? 0 : y > 1 ? 1 : y;
 }
 function xLng(x) {
@@ -20162,7 +20206,7 @@ var GeoJSONWorkerSource = function (VectorTileWorkerSource$$1) {
             } else {
                 geojsonRewind(data, true);
                 try {
-                    this$1._geoJSONIndex = params.cluster ? supercluster(params.superclusterOptions).load(data.features) : geojsonvt(data, params.geojsonVtOptions);
+                    this$1._geoJSONIndex = params.cluster ? new Supercluster(params.superclusterOptions).load(data.features) : geojsonvt(data, params.geojsonVtOptions);
                 } catch (err) {
                     return callback(err);
                 }
@@ -20489,7 +20533,7 @@ DOM.setTransform = function (el, value) {
 var passiveSupported = false;
 try {
     var options$1 = Object.defineProperty({}, 'passive', {
-        get: function () {
+        get: function get() {
             passiveSupported = true;
         }
     });
@@ -21098,13 +21142,15 @@ var Light = function (Evented) {
     Light.prototype.getLight = function getLight() {
         return this._transitionable.serialize();
     };
-    Light.prototype.setLight = function setLight(options) {
+    Light.prototype.setLight = function setLight(light, options) {
         var this$1 = this;
-        if (this._validate(__chunk_1.validateLight, options)) {
+        if (options === void 0)
+            options = {};
+        if (this._validate(__chunk_1.validateLight, light, options)) {
             return;
         }
-        for (var name in options) {
-            var value = options[name];
+        for (var name in light) {
+            var value = light[name];
             if (__chunk_1.endsWith(name, TRANSITION_SUFFIX)) {
                 this$1._transitionable.setTransition(name.slice(0, -TRANSITION_SUFFIX.length), value);
             } else {
@@ -21121,7 +21167,10 @@ var Light = function (Evented) {
     Light.prototype.recalculate = function recalculate(parameters) {
         this.properties = this._transitioning.possiblyEvaluate(parameters);
     };
-    Light.prototype._validate = function _validate(validate, value) {
+    Light.prototype._validate = function _validate(validate, value, options) {
+        if (options && options.validate === false) {
+            return false;
+        }
         return __chunk_1.emitValidationErrors(this, validate.call(__chunk_1.validateStyle, __chunk_1.extend({
             value: value,
             style: {
@@ -21283,6 +21332,9 @@ function loadTileJSON (options, requestTransformFn, callback) {
                     return layer.id;
                 });
             }
+            if (options.url) {
+                result.tiles = __chunk_1.canonicalizeTileset(result, options.url);
+            }
             callback(null, result);
         }
     };
@@ -21317,22 +21369,15 @@ TileBounds.prototype.validateBounds = function validateBounds(bounds) {
     ];
 };
 TileBounds.prototype.contains = function contains(tileID) {
+    var worldSize = Math.pow(2, tileID.z);
     var level = {
-        minX: Math.floor(this.lngX(this.bounds.getWest(), tileID.z)),
-        minY: Math.floor(this.latY(this.bounds.getNorth(), tileID.z)),
-        maxX: Math.ceil(this.lngX(this.bounds.getEast(), tileID.z)),
-        maxY: Math.ceil(this.latY(this.bounds.getSouth(), tileID.z))
+        minX: Math.floor(__chunk_1.mercatorXfromLng(this.bounds.getWest()) * worldSize),
+        minY: Math.floor(__chunk_1.mercatorYfromLat(this.bounds.getNorth()) * worldSize),
+        maxX: Math.ceil(__chunk_1.mercatorXfromLng(this.bounds.getEast()) * worldSize),
+        maxY: Math.ceil(__chunk_1.mercatorYfromLat(this.bounds.getSouth()) * worldSize)
     };
     var hit = tileID.x >= level.minX && tileID.x < level.maxX && tileID.y >= level.minY && tileID.y < level.maxY;
     return hit;
-};
-TileBounds.prototype.lngX = function lngX(lng, zoom) {
-    return (lng + 180) * (Math.pow(2, zoom) / 360);
-};
-TileBounds.prototype.latY = function latY(lat, zoom) {
-    var f = __chunk_1.clamp(Math.sin(Math.PI / 180 * lat), -0.9999, 0.9999);
-    var scale = Math.pow(2, zoom) / (2 * Math.PI);
-    return Math.pow(2, zoom - 1) + 0.5 * Math.log((1 + f) / (1 - f)) * -scale;
 };
 
 var VectorTileSource = function (Evented) {
@@ -21915,7 +21960,7 @@ var ImageSource = function (Evented) {
             if (err) {
                 this$1.fire(new __chunk_1.ErrorEvent(err));
             } else if (image) {
-                this$1.image = __chunk_1.browser.getImageData(image);
+                this$1.image = image;
                 if (newCoordinates) {
                     this$1.coordinates = newCoordinates;
                 }
@@ -25552,6 +25597,7 @@ var Placement = function Placement(transform, fadeDuration, crossSourceCollision
     this.placements = {};
     this.opacities = {};
     this.stale = false;
+    this.commitTime = 0;
     this.fadeDuration = fadeDuration;
     this.retainedQueryData = {};
     this.collisionGroups = new CollisionGroups(crossSourceCollisions);
@@ -25790,7 +25836,7 @@ Placement.prototype.hasTransitions = function hasTransitions(now) {
     return this.stale || now - this.lastPlacementChangeTime < this.fadeDuration;
 };
 Placement.prototype.stillRecent = function stillRecent(now) {
-    return this.commitTime !== 'undefined' && this.commitTime + this.fadeDuration > now;
+    return this.commitTime + this.fadeDuration > now;
 };
 Placement.prototype.setStale = function setStale() {
     this.stale = true;
@@ -26389,6 +26435,8 @@ var Style = function (Evented) {
     };
     Style.prototype.addSource = function addSource(id, source, options) {
         var this$1 = this;
+        if (options === void 0)
+            options = {};
         this._checkLoaded();
         if (this.sourceCaches[id] !== undefined) {
             throw new Error('There is already a source with this ID');
@@ -26458,6 +26506,8 @@ var Style = function (Evented) {
         return this.sourceCaches[id] && this.sourceCaches[id].getSource();
     };
     Style.prototype.addLayer = function addLayer(layerObject, before, options) {
+        if (options === void 0)
+            options = {};
         this._checkLoaded();
         var id = layerObject.id;
         if (this.getLayer(id)) {
@@ -26568,7 +26618,9 @@ var Style = function (Evented) {
         }
         this._updateLayer(layer);
     };
-    Style.prototype.setFilter = function setFilter(layerId, filter) {
+    Style.prototype.setFilter = function setFilter(layerId, filter, options) {
+        if (options === void 0)
+            options = {};
         this._checkLoaded();
         var layer = this.getLayer(layerId);
         if (!layer) {
@@ -26583,7 +26635,7 @@ var Style = function (Evented) {
             this._updateLayer(layer);
             return;
         }
-        if (this._validate(__chunk_1.validateStyle.filter, 'layers.' + layer.id + '.filter', filter)) {
+        if (this._validate(__chunk_1.validateStyle.filter, 'layers.' + layer.id + '.filter', filter, null, options)) {
             return;
         }
         layer.filter = __chunk_1.clone(filter);
@@ -26592,7 +26644,9 @@ var Style = function (Evented) {
     Style.prototype.getFilter = function getFilter(layer) {
         return __chunk_1.clone(this.getLayer(layer).filter);
     };
-    Style.prototype.setLayoutProperty = function setLayoutProperty(layerId, name, value) {
+    Style.prototype.setLayoutProperty = function setLayoutProperty(layerId, name, value, options) {
+        if (options === void 0)
+            options = {};
         this._checkLoaded();
         var layer = this.getLayer(layerId);
         if (!layer) {
@@ -26602,13 +26656,20 @@ var Style = function (Evented) {
         if (__chunk_1.deepEqual(layer.getLayoutProperty(name), value)) {
             return;
         }
-        layer.setLayoutProperty(name, value);
+        layer.setLayoutProperty(name, value, options);
         this._updateLayer(layer);
     };
-    Style.prototype.getLayoutProperty = function getLayoutProperty(layer, name) {
-        return this.getLayer(layer).getLayoutProperty(name);
+    Style.prototype.getLayoutProperty = function getLayoutProperty(layerId, name) {
+        var layer = this.getLayer(layerId);
+        if (!layer) {
+            this.fire(new __chunk_1.ErrorEvent(new Error('The layer \'' + layerId + '\' does not exist in the map\'s style.')));
+            return;
+        }
+        return layer.getLayoutProperty(name);
     };
-    Style.prototype.setPaintProperty = function setPaintProperty(layerId, name, value) {
+    Style.prototype.setPaintProperty = function setPaintProperty(layerId, name, value, options) {
+        if (options === void 0)
+            options = {};
         this._checkLoaded();
         var layer = this.getLayer(layerId);
         if (!layer) {
@@ -26618,7 +26679,7 @@ var Style = function (Evented) {
         if (__chunk_1.deepEqual(layer.getPaintProperty(name), value)) {
             return;
         }
-        var requiresRelayout = layer.setPaintProperty(name, value);
+        var requiresRelayout = layer.setPaintProperty(name, value, options);
         if (requiresRelayout) {
             this._updateLayer(layer);
         }
@@ -26782,7 +26843,9 @@ var Style = function (Evented) {
     Style.prototype.getLight = function getLight() {
         return this.light.getLight();
     };
-    Style.prototype.setLight = function setLight(lightOptions) {
+    Style.prototype.setLight = function setLight(lightOptions, options) {
+        if (options === void 0)
+            options = {};
         this._checkLoaded();
         var light = this.light.getLight();
         var _update = false;
@@ -26802,10 +26865,12 @@ var Style = function (Evented) {
                 delay: 0
             }, this.stylesheet.transition)
         };
-        this.light.setLight(lightOptions);
+        this.light.setLight(lightOptions, options);
         this.light.updateTransitions(parameters);
     };
     Style.prototype._validate = function _validate(validate, key, value, props, options) {
+        if (options === void 0)
+            options = {};
         if (options && options.validate === false) {
             return false;
         }
@@ -26874,7 +26939,7 @@ var Style = function (Evented) {
             symbolBucketsChanged = symbolBucketsChanged || layerBucketsChanged;
         }
         this.crossTileSymbolIndex.pruneUnusedLayers(this._order);
-        var forceFullPlacement = this._layerOrderChanged;
+        var forceFullPlacement = this._layerOrderChanged || fadeDuration === 0;
         if (forceFullPlacement || !this.pauseablePlacement || this.pauseablePlacement.isDone() && !this.placement.stillRecent(__chunk_1.browser.now())) {
             this.pauseablePlacement = new PauseablePlacement(transform, this._order, forceFullPlacement, showCollisionBoxes, fadeDuration, crossSourceCollisions);
             this._layerOrderChanged = false;
@@ -27625,8 +27690,9 @@ var hillshadeUniformValues = function (painter, tile, layer) {
     if (layer.paint.get('hillshade-illumination-anchor') === 'viewport') {
         azimuthal -= painter.transform.angle;
     }
+    var align = !painter.options.moving;
     return {
-        'u_matrix': painter.transform.calculatePosMatrix(tile.tileID.toUnwrapped(), true),
+        'u_matrix': painter.transform.calculatePosMatrix(tile.tileID.toUnwrapped(), align),
         'u_image': 0,
         'u_latrange': getTileLatRange(painter, tile.tileID),
         'u_light': [
@@ -28047,8 +28113,7 @@ function drawLayerSymbols(painter, sourceCache, layer, coords, isText, translate
     var pitchWithMap = pitchAlignment === 'map';
     var alongLine = rotateWithMap && layer.layout.get('symbol-placement') !== 'point';
     var rotateInShader = rotateWithMap && !pitchWithMap && !alongLine;
-    var depthOn = pitchWithMap;
-    var depthMode = depthOn ? painter.depthModeForSublayer(0, DepthMode.ReadOnly) : DepthMode.disabled;
+    var depthMode = painter.depthModeForSublayer(0, DepthMode.ReadOnly);
     var program;
     var size;
     for (var i = 0, list = coords; i < list.length; i += 1) {
@@ -28516,10 +28581,11 @@ function prepareHillshade(painter, tile, layer, sourceMaxZoom, depthMode, stenci
     var gl = context.gl;
     if (tile.dem && tile.dem.data) {
         var tileSize = tile.dem.dim;
+        var textureStride = tile.dem.stride;
         var pixelData = tile.dem.getPixels();
         context.activeTexture.set(gl.TEXTURE1);
         context.pixelStoreUnpackPremultiplyAlpha.set(false);
-        tile.demTexture = tile.demTexture || painter.getTileTexture(tile.tileSize);
+        tile.demTexture = tile.demTexture || painter.getTileTexture(textureStride);
         if (tile.demTexture) {
             var demTexture = tile.demTexture;
             demTexture.update(pixelData, { premultiply: false });
@@ -28566,11 +28632,12 @@ function drawRaster(painter, sourceCache, layer, coords) {
     var stencilMode = StencilMode.disabled;
     var colorMode = painter.colorModeForRenderPass();
     var minTileZ = coords.length && coords[0].overscaledZ;
+    var align = !painter.options.moving;
     for (var i = 0, list = coords; i < list.length; i += 1) {
         var coord = list[i];
         var depthMode = painter.depthModeForSublayer(coord.overscaledZ - minTileZ, layer.paint.get('raster-opacity') === 1 ? DepthMode.ReadWrite : DepthMode.ReadOnly, gl.LESS);
         var tile = sourceCache.getTile(coord);
-        var posMatrix = painter.transform.calculatePosMatrix(coord.toUnwrapped(), true);
+        var posMatrix = painter.transform.calculatePosMatrix(coord.toUnwrapped(), align);
         tile.registerFadeDuration(layer.paint.get('raster-fade-duration'));
         var parentTile = sourceCache.findLoadedParent(coord, 0), fade = getFadeValues(tile, parentTile, sourceCache, layer, painter.transform);
         var parentScaleBy = void 0, parentTL = void 0;
@@ -31647,6 +31714,7 @@ function drawCustom(painter, sourceCache, layer) {
             drawOffscreenTexture(painter, layer, 1);
         } else {
             painter.setCustomLayerDefaults();
+            context.setColorMode(painter.colorModeForRenderPass());
             context.setStencilMode(StencilMode.disabled);
             var depthMode = painter.depthModeForSublayer(0, DepthMode.ReadOnly);
             context.setDepthMode(depthMode);
@@ -31809,11 +31877,10 @@ Painter.prototype.colorModeForRenderPass = function colorModeForRenderPass() {
     }
 };
 Painter.prototype.depthModeForSublayer = function depthModeForSublayer(n, mask, func) {
-    var farDepth = 1 - ((1 + this.currentLayer) * this.numSublayers + n) * this.depthEpsilon;
-    var nearDepth = farDepth - 1 + this.depthRange;
+    var depth = 1 - ((1 + this.currentLayer) * this.numSublayers + n) * this.depthEpsilon;
     return new DepthMode(func || this.context.gl.LEQUAL, mask, [
-        nearDepth,
-        farDepth
+        depth,
+        depth
     ]);
 };
 Painter.prototype.render = function render(style, options) {
@@ -33688,7 +33755,7 @@ TouchZoomRotateHandler.prototype._onMove = function _onMove(e) {
     var scale = ref.scale;
     var bearing = ref.bearing;
     if (!this._gestureIntent) {
-        var scalingSignificantly = Math.abs(1 - scale) > significantScaleThreshold, rotatingSignificantly = Math.abs(bearing) > significantRotateThreshold;
+        var scalingSignificantly = this._rotationDisabled && scale !== 1 || Math.abs(1 - scale) > significantScaleThreshold, rotatingSignificantly = Math.abs(bearing) > significantRotateThreshold;
         if (rotatingSignificantly) {
             this._gestureIntent = 'rotate';
         } else if (scalingSignificantly) {
@@ -34060,14 +34127,6 @@ var Camera = function (Evented) {
             __chunk_1.warnOnce('options.padding must be a positive number, or an Object with keys \'bottom\', \'left\', \'right\', \'top\'');
             return;
         }
-        var paddingOffset = [
-                (options.padding.left - options.padding.right) / 2,
-                (options.padding.top - options.padding.bottom) / 2
-            ], lateralPadding = Math.min(options.padding.right, options.padding.left), verticalPadding = Math.min(options.padding.top, options.padding.bottom);
-        options.offset = [
-            options.offset[0] + paddingOffset[0],
-            options.offset[1] + paddingOffset[1]
-        ];
         var tr = this.transform;
         var p0world = tr.project(__chunk_1.LngLat.convert(p0));
         var p1world = tr.project(__chunk_1.LngLat.convert(p1));
@@ -34075,15 +34134,25 @@ var Camera = function (Evented) {
         var p1rotated = p1world.rotate(-bearing * Math.PI / 180);
         var upperRight = new __chunk_1.Point(Math.max(p0rotated.x, p1rotated.x), Math.max(p0rotated.y, p1rotated.y));
         var lowerLeft = new __chunk_1.Point(Math.min(p0rotated.x, p1rotated.x), Math.min(p0rotated.y, p1rotated.y));
-        var offset = __chunk_1.Point.convert(options.offset), size = upperRight.sub(lowerLeft), scaleX = (tr.width - lateralPadding * 2 - Math.abs(offset.x) * 2) / size.x, scaleY = (tr.height - verticalPadding * 2 - Math.abs(offset.y) * 2) / size.y;
+        var size = upperRight.sub(lowerLeft);
+        var scaleX = (tr.width - options.padding.left - options.padding.right) / size.x;
+        var scaleY = (tr.height - options.padding.top - options.padding.bottom) / size.y;
         if (scaleY < 0 || scaleX < 0) {
             __chunk_1.warnOnce('Map cannot fit within canvas with the given bounds, padding, and/or offset.');
             return;
         }
-        options.center = tr.unproject(p0world.add(p1world).div(2));
-        options.zoom = Math.min(tr.scaleZoom(tr.scale * Math.min(scaleX, scaleY)), options.maxZoom);
-        options.bearing = bearing;
-        return options;
+        var zoom = Math.min(tr.scaleZoom(tr.scale * Math.min(scaleX, scaleY)), options.maxZoom);
+        var offset = __chunk_1.Point.convert(options.offset);
+        var paddingOffsetX = (options.padding.left - options.padding.right) / 2;
+        var paddingOffsetY = (options.padding.top - options.padding.bottom) / 2;
+        var offsetAtInitialZoom = new __chunk_1.Point(offset.x + paddingOffsetX, offset.y + paddingOffsetY);
+        var offsetAtFinalZoom = offsetAtInitialZoom.mult(tr.scale / tr.zoomScale(zoom));
+        var center = tr.unproject(p0world.add(p1world).div(2).sub(offsetAtFinalZoom));
+        return {
+            center: center,
+            zoom: zoom,
+            bearing: bearing
+        };
     };
     Camera.prototype.fitBounds = function fitBounds(bounds, options, eventData) {
         return this._fitInternal(this.cameraForBounds(bounds, options), options, eventData);
@@ -34410,6 +34479,7 @@ AttributionControl.prototype.onAdd = function onAdd(map) {
     var compact = this.options && this.options.compact;
     this._map = map;
     this._container = DOM.create('div', 'mapboxgl-ctrl mapboxgl-ctrl-attrib');
+    this._innerContainer = DOM.create('div', 'mapboxgl-ctrl-attrib-inner', this._container);
     if (compact) {
         this._container.classList.add('mapboxgl-compact');
     }
@@ -34478,10 +34548,10 @@ AttributionControl.prototype._updateAttributions = function _updateAttributions(
                 if (typeof attribution !== 'string') {
                     return '';
                 }
-                return '<p>' + attribution + '</p>';
+                return attribution;
             }));
         } else if (typeof this.options.customAttribution === 'string') {
-            attributions.push('<p>' + this.options.customAttribution + '</p>');
+            attributions.push(this.options.customAttribution);
         }
     }
     if (this._map.style.stylesheet) {
@@ -34511,7 +34581,7 @@ AttributionControl.prototype._updateAttributions = function _updateAttributions(
         return true;
     });
     if (attributions.length) {
-        this._container.innerHTML = attributions.join('<p> | </p>');
+        this._innerContainer.innerHTML = attributions.join(' | ');
         this._container.classList.remove('mapboxgl-attrib-empty');
     } else {
         this._container.classList.add('mapboxgl-attrib-empty');
@@ -34727,6 +34797,9 @@ var Map = function (Camera$$1) {
         this.on('move', function () {
             return this$1._update(false);
         });
+        this.on('moveend', function () {
+            return this$1._update(false);
+        });
         this.on('zoom', function () {
             return this$1._update(true);
         });
@@ -34737,16 +34810,15 @@ var Map = function (Camera$$1) {
         bindHandlers(this, options);
         this._hash = options.hash && new Hash().addTo(this);
         if (!this._hash || !this._hash._onHashChange()) {
+            this.jumpTo({
+                center: options.center,
+                zoom: options.zoom,
+                bearing: options.bearing,
+                pitch: options.pitch
+            });
             if (options.bounds) {
                 this.resize();
                 this.fitBounds(options.bounds, { duration: 0 });
-            } else {
-                this.jumpTo({
-                    center: options.center,
-                    zoom: options.zoom,
-                    bearing: options.bearing,
-                    pitch: options.pitch
-                });
             }
         }
         this.resize();
@@ -35026,17 +35098,14 @@ var Map = function (Camera$$1) {
         return this.style.querySourceFeatures(sourceID, parameters);
     };
     Map.prototype.setStyle = function setStyle(style, options) {
-        var shouldTryDiff = (!options || options.diff !== false && !options.localIdeographFontFamily) && this.style;
-        if (shouldTryDiff && style && typeof style === 'object') {
-            try {
-                if (this.style.setState(style)) {
-                    this._update(true);
-                }
-                return this;
-            } catch (e) {
-                __chunk_1.warnOnce('Unable to perform style diff: ' + (e.message || e.error || e) + '.  Rebuilding the style from scratch.');
-            }
+        if ((!options || options.diff !== false && !options.localIdeographFontFamily) && this.style && style) {
+            this._diffStyle(style, options);
+            return this;
+        } else {
+            return this._updateStyle(style, options);
         }
+    };
+    Map.prototype._updateStyle = function _updateStyle(style, options) {
         if (this.style) {
             this.style.setEventedParent(null);
             this.style._remove();
@@ -35054,6 +35123,32 @@ var Map = function (Camera$$1) {
             this.style.loadJSON(style);
         }
         return this;
+    };
+    Map.prototype._diffStyle = function _diffStyle(style, options) {
+        var this$1 = this;
+        if (typeof style === 'string') {
+            var url = __chunk_1.normalizeStyleURL(style);
+            var request = this._transformRequest(url, __chunk_1.ResourceType.Style);
+            __chunk_1.getJSON(request, function (error, json) {
+                if (error) {
+                    this$1.fire(new __chunk_1.ErrorEvent(error));
+                } else if (json) {
+                    this$1._updateDiff(json, options);
+                }
+            });
+        } else if (typeof style === 'object') {
+            this._updateDiff(style, options);
+        }
+    };
+    Map.prototype._updateDiff = function _updateDiff(style, options) {
+        try {
+            if (this.style.setState(style)) {
+                this._update(true);
+            }
+        } catch (e) {
+            __chunk_1.warnOnce('Unable to perform style diff: ' + (e.message || e.error || e) + '.  Rebuilding the style from scratch.');
+            this._updateStyle(style, options);
+        }
     };
     Map.prototype.getStyle = function getStyle() {
         if (this.style) {
@@ -35171,8 +35266,10 @@ var Map = function (Camera$$1) {
     Map.prototype.getLayer = function getLayer(id) {
         return this.style.getLayer(id);
     };
-    Map.prototype.setFilter = function setFilter(layer, filter) {
-        this.style.setFilter(layer, filter);
+    Map.prototype.setFilter = function setFilter(layer, filter, options) {
+        if (options === void 0)
+            options = {};
+        this.style.setFilter(layer, filter, options);
         return this._update(true);
     };
     Map.prototype.setLayerZoomRange = function setLayerZoomRange(layerId, minzoom, maxzoom) {
@@ -35182,22 +35279,28 @@ var Map = function (Camera$$1) {
     Map.prototype.getFilter = function getFilter(layer) {
         return this.style.getFilter(layer);
     };
-    Map.prototype.setPaintProperty = function setPaintProperty(layer, name, value) {
-        this.style.setPaintProperty(layer, name, value);
+    Map.prototype.setPaintProperty = function setPaintProperty(layer, name, value, options) {
+        if (options === void 0)
+            options = {};
+        this.style.setPaintProperty(layer, name, value, options);
         return this._update(true);
     };
     Map.prototype.getPaintProperty = function getPaintProperty(layer, name) {
         return this.style.getPaintProperty(layer, name);
     };
-    Map.prototype.setLayoutProperty = function setLayoutProperty(layer, name, value) {
-        this.style.setLayoutProperty(layer, name, value);
+    Map.prototype.setLayoutProperty = function setLayoutProperty(layer, name, value, options) {
+        if (options === void 0)
+            options = {};
+        this.style.setLayoutProperty(layer, name, value, options);
         return this._update(true);
     };
     Map.prototype.getLayoutProperty = function getLayoutProperty(layer, name) {
         return this.style.getLayoutProperty(layer, name);
     };
-    Map.prototype.setLight = function setLight(light) {
-        this.style.setLight(light);
+    Map.prototype.setLight = function setLight(light, options) {
+        if (options === void 0)
+            options = {};
+        this.style.setLight(light, options);
         return this._update(true);
     };
     Map.prototype.getLight = function getLight() {
@@ -35284,6 +35387,7 @@ var Map = function (Camera$$1) {
             return;
         }
         this.painter = new Painter(gl, this.transform);
+        __chunk_1.webpSupported.testSupport(gl);
     };
     Map.prototype._contextLost = function _contextLost(event) {
         event.preventDefault();
@@ -35351,6 +35455,7 @@ var Map = function (Camera$$1) {
             showOverdrawInspector: this._showOverdrawInspector,
             rotating: this.isRotating(),
             zooming: this.isZooming(),
+            moving: this.isMoving(),
             fadeDuration: this._fadeDuration
         });
         this.fire(new __chunk_1.Event('render'));
@@ -35366,6 +35471,8 @@ var Map = function (Camera$$1) {
         }
         if (this._sourcesDirty || this._repaint || this._styleDirty || this._placementDirty) {
             this.triggerRepaint();
+        } else if (!this.isMoving() && this.loaded()) {
+            this.fire(new __chunk_1.Event('idle'));
         }
         return this;
     };
@@ -35583,10 +35690,10 @@ function applyAnchorClass(element, anchor, prefix) {
 }
 
 var Marker = function (Evented) {
-    function Marker(options) {
+    function Marker(options, legacyOptions) {
         Evented.call(this);
-        if (arguments[0] instanceof __chunk_1.window.HTMLElement || arguments.length === 2) {
-            options = __chunk_1.extend({ element: options }, arguments[1]);
+        if (options instanceof __chunk_1.window.HTMLElement || legacyOptions) {
+            options = __chunk_1.extend({ element: options }, legacyOptions);
         }
         __chunk_1.bindAll([
             '_update',
@@ -36262,8 +36369,15 @@ function getRoundNum(num) {
     return pow10 * d;
 }
 
-var FullscreenControl = function FullscreenControl() {
+var FullscreenControl = function FullscreenControl(options) {
     this._fullscreen = false;
+    if (options && options.container) {
+        if (options.container instanceof __chunk_1.window.HTMLElement) {
+            this._container = options.container;
+        } else {
+            __chunk_1.warnOnce('Full screen control \'container\' must be a DOM element.');
+        }
+    }
     __chunk_1.bindAll([
         '_onClickFullscreen',
         '_changeIcon'
@@ -36281,18 +36395,20 @@ var FullscreenControl = function FullscreenControl() {
 };
 FullscreenControl.prototype.onAdd = function onAdd(map) {
     this._map = map;
-    this._mapContainer = this._map.getContainer();
-    this._container = DOM.create('div', this._className + ' mapboxgl-ctrl-group');
+    if (!this._container) {
+        this._container = this._map.getContainer();
+    }
+    this._controlContainer = DOM.create('div', this._className + ' mapboxgl-ctrl-group');
     if (this._checkFullscreenSupport()) {
         this._setupUI();
     } else {
-        this._container.style.display = 'none';
+        this._controlContainer.style.display = 'none';
         __chunk_1.warnOnce('This device does not support fullscreen mode.');
     }
-    return this._container;
+    return this._controlContainer;
 };
 FullscreenControl.prototype.onRemove = function onRemove() {
-    DOM.remove(this._container);
+    DOM.remove(this._controlContainer);
     this._map = null;
     __chunk_1.window.document.removeEventListener(this._fullscreenchange, this._changeIcon);
 };
@@ -36300,7 +36416,7 @@ FullscreenControl.prototype._checkFullscreenSupport = function _checkFullscreenS
     return !!(__chunk_1.window.document.fullscreenEnabled || __chunk_1.window.document.mozFullScreenEnabled || __chunk_1.window.document.msFullscreenEnabled || __chunk_1.window.document.webkitFullscreenEnabled);
 };
 FullscreenControl.prototype._setupUI = function _setupUI() {
-    var button = this._fullscreenButton = DOM.create('button', this._className + '-icon ' + this._className + '-fullscreen', this._container);
+    var button = this._fullscreenButton = DOM.create('button', this._className + '-icon ' + this._className + '-fullscreen', this._controlContainer);
     button.setAttribute('aria-label', 'Toggle fullscreen');
     button.type = 'button';
     this._fullscreenButton.addEventListener('click', this._onClickFullscreen);
@@ -36311,7 +36427,7 @@ FullscreenControl.prototype._isFullscreen = function _isFullscreen() {
 };
 FullscreenControl.prototype._changeIcon = function _changeIcon() {
     var fullscreenElement = __chunk_1.window.document.fullscreenElement || __chunk_1.window.document.mozFullScreenElement || __chunk_1.window.document.webkitFullscreenElement || __chunk_1.window.document.msFullscreenElement;
-    if (fullscreenElement === this._mapContainer !== this._fullscreen) {
+    if (fullscreenElement === this._container !== this._fullscreen) {
         this._fullscreen = !this._fullscreen;
         this._fullscreenButton.classList.toggle(this._className + '-shrink');
         this._fullscreenButton.classList.toggle(this._className + '-fullscreen');
@@ -36328,14 +36444,14 @@ FullscreenControl.prototype._onClickFullscreen = function _onClickFullscreen() {
         } else if (__chunk_1.window.document.webkitCancelFullScreen) {
             __chunk_1.window.document.webkitCancelFullScreen();
         }
-    } else if (this._mapContainer.requestFullscreen) {
-        this._mapContainer.requestFullscreen();
-    } else if (this._mapContainer.mozRequestFullScreen) {
-        this._mapContainer.mozRequestFullScreen();
-    } else if (this._mapContainer.msRequestFullscreen) {
-        this._mapContainer.msRequestFullscreen();
-    } else if (this._mapContainer.webkitRequestFullscreen) {
-        this._mapContainer.webkitRequestFullscreen();
+    } else if (this._container.requestFullscreen) {
+        this._container.requestFullscreen();
+    } else if (this._container.mozRequestFullScreen) {
+        this._container.mozRequestFullScreen();
+    } else if (this._container.msRequestFullscreen) {
+        this._container.msRequestFullscreen();
+    } else if (this._container.webkitRequestFullscreen) {
+        this._container.webkitRequestFullscreen();
     }
 };
 
@@ -36578,6 +36694,12 @@ var exported = {
     },
     set accessToken(token) {
         __chunk_1.config.ACCESS_TOKEN = token;
+    },
+    get baseApiUrl() {
+        return __chunk_1.config.API_URL;
+    },
+    set baseApiUrl(url) {
+        __chunk_1.config.API_URL = url;
     },
     get workerCount() {
         return WorkerPool.workerCount;
