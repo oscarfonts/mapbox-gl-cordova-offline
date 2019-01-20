@@ -51,6 +51,9 @@ offline map creation process is asynchronous:
 
 See `www/index.html` in this repo for a working example.
 
+> Since MapboxGL JS version 0.50.0 ajax uses `window.fetch` to make request. This API doesn't allow load files using `file:`
+> protocol. To avoid this we undefined the `window.fetch` API in the `index.html`
+
 
 ### Offline data sources (mbtiles)
 
