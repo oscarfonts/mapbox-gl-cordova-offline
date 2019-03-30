@@ -41,8 +41,10 @@ const absoluteSpriteUrl = (options) => {
     const hasProtocol = /^.+:\/\//;
     const path = window.location.origin + window.location.pathname.split('/').slice(0, -1).join('/');
 
-    if (('sprite' in style) && !style.sprite.match(hasProtocol)) {
+    if (('sprite' in style) && !style.sprite.match(hasProtocol) &&
+        ('glyphs' in style) && !style.glyphs.match(hasProtocol)) {
         style.sprite = path + '/' +  style.sprite; // eslint-disable-line prefer-template
+        style.glyphs = path + '/' +  style.glyphs; // eslint-disable-line prefer-template
     }
     return options;
 };

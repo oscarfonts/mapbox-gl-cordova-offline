@@ -102,7 +102,7 @@ class MBTilesSource extends VectorTileSource {
             if (err) {
                 return callback(err);
             }
-            if (base64Data == undefined) {
+            if (base64Data === undefined) {
               return callback(new Error("empty data"));
             }
 
