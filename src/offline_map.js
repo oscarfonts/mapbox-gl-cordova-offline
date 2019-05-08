@@ -58,8 +58,14 @@ const createEmptyMap = (options) => new Promise((resolve) => {
     const emptyMapOptions = extend({}, options, {style: emptyMapStyle});
     const map = new Map(emptyMapOptions);
     map.once('load', () => {
-        map.addSourceType('mbtiles', MBTilesSource, () => resolve(map))
-        map.addSourceType('rasteroffline', RasterTileSourceOffline, () => resolve(map))
+        let mbTilesSourceLoaded = new Promise((resolve) => {
+            map.addSourceType('mbtiles', MBTilesSource, () => resolve())
+        })
+        let rasterOfflineSourceLoaded = new Promise((resolve) => {
+            map.addSourceType('rasteroffline', RasterTileSourceOffline, () => resolve())
+        })
+
+        Promise.all([mbTilesSourceLoaded, rasterOfflineSourceLoaded]).then(() => resolve(map))
     });
 });
 
