@@ -1,4 +1,4 @@
-/* Mapbox GL JS is licensed under the 3-Clause BSD License. Full text of license: https://github.com/mapbox/mapbox-gl-js/blob/v0.2.1/LICENSE.txt */
+/* Mapbox GL JS is licensed under the 3-Clause BSD License. Full text of license: https://github.com/mapbox/mapbox-gl-js/blob/v0.2.0/LICENSE.txt */
 (function (global, factory) {
 typeof exports === 'object' && typeof module !== 'undefined' ? module.exports = factory() :
 typeof define === 'function' && define.amd ? define(factory) :
@@ -15923,6 +15923,188 @@ function getQuadkey(z, x, y) {
 register('CanonicalTileID', CanonicalTileID);
 register('OverscaledTileID', OverscaledTileID, { omit: ['posMatrix'] });
 
+function loadTileJSON (options, requestTransformFn, callback) {
+    var loaded = function (err, tileJSON) {
+        if (err) {
+            return callback(err);
+        } else if (tileJSON) {
+            var result = pick(tileJSON, [
+                'tiles',
+                'minzoom',
+                'maxzoom',
+                'attribution',
+                'mapbox_logo',
+                'bounds'
+            ]);
+            if (tileJSON.vector_layers) {
+                result.vectorLayers = tileJSON.vector_layers;
+                result.vectorLayerIds = result.vectorLayers.map(function (layer) {
+                    return layer.id;
+                });
+            }
+            if (options.url) {
+                result.tiles = canonicalizeTileset(result, options.url);
+            }
+            callback(null, result);
+        }
+    };
+    if (options.url) {
+        return getJSON(requestTransformFn(normalizeSourceURL(options.url), ResourceType.Source), loaded);
+    } else {
+        return exported.frame(function () { return loaded(null, options); });
+    }
+}
+
+var TileBounds = function TileBounds(bounds, minzoom, maxzoom) {
+    this.bounds = LngLatBounds.convert(this.validateBounds(bounds));
+    this.minzoom = minzoom || 0;
+    this.maxzoom = maxzoom || 24;
+};
+TileBounds.prototype.validateBounds = function validateBounds (bounds) {
+    if (!Array.isArray(bounds) || bounds.length !== 4)
+        { return [
+            -180,
+            -90,
+            180,
+            90
+        ]; }
+    return [
+        Math.max(-180, bounds[0]),
+        Math.max(-90, bounds[1]),
+        Math.min(180, bounds[2]),
+        Math.min(90, bounds[3])
+    ];
+};
+TileBounds.prototype.contains = function contains (tileID) {
+    var worldSize = Math.pow(2, tileID.z);
+    var level = {
+        minX: Math.floor(mercatorXfromLng(this.bounds.getWest()) * worldSize),
+        minY: Math.floor(mercatorYfromLat(this.bounds.getNorth()) * worldSize),
+        maxX: Math.ceil(mercatorXfromLng(this.bounds.getEast()) * worldSize),
+        maxY: Math.ceil(mercatorYfromLat(this.bounds.getSouth()) * worldSize)
+    };
+    var hit = tileID.x >= level.minX && tileID.x < level.maxX && tileID.y >= level.minY && tileID.y < level.maxY;
+    return hit;
+};
+
+var RasterTileSource = (function (Evented$$1) {
+    function RasterTileSource(id, options, dispatcher, eventedParent) {
+        Evented$$1.call(this);
+        this.id = id;
+        this.dispatcher = dispatcher;
+        this.setEventedParent(eventedParent);
+        this.type = 'raster';
+        this.minzoom = 0;
+        this.maxzoom = 22;
+        this.roundZoom = true;
+        this.scheme = 'xyz';
+        this.tileSize = 512;
+        this._loaded = false;
+        this._options = extend({}, options);
+        extend(this, pick(options, [
+            'url',
+            'scheme',
+            'tileSize'
+        ]));
+    }
+
+    if ( Evented$$1 ) RasterTileSource.__proto__ = Evented$$1;
+    RasterTileSource.prototype = Object.create( Evented$$1 && Evented$$1.prototype );
+    RasterTileSource.prototype.constructor = RasterTileSource;
+    RasterTileSource.prototype.load = function load () {
+        var this$1 = this;
+
+        this.fire(new Event('dataloading', { dataType: 'source' }));
+        this._tileJSONRequest = loadTileJSON(this._options, this.map._transformRequest, function (err, tileJSON) {
+            this$1._tileJSONRequest = null;
+            if (err) {
+                this$1.fire(new ErrorEvent(err));
+            } else if (tileJSON) {
+                extend(this$1, tileJSON);
+                if (tileJSON.bounds)
+                    { this$1.tileBounds = new TileBounds(tileJSON.bounds, this$1.minzoom, this$1.maxzoom); }
+                postTurnstileEvent(tileJSON.tiles);
+                postMapLoadEvent(tileJSON.tiles, this$1.map._getMapId());
+                this$1.fire(new Event('data', {
+                    dataType: 'source',
+                    sourceDataType: 'metadata'
+                }));
+                this$1.fire(new Event('data', {
+                    dataType: 'source',
+                    sourceDataType: 'content'
+                }));
+            }
+        });
+    };
+    RasterTileSource.prototype.onAdd = function onAdd (map) {
+        this.map = map;
+        this.load();
+    };
+    RasterTileSource.prototype.onRemove = function onRemove () {
+        if (this._tileJSONRequest) {
+            this._tileJSONRequest.cancel();
+            this._tileJSONRequest = null;
+        }
+    };
+    RasterTileSource.prototype.serialize = function serialize () {
+        return extend({}, this._options);
+    };
+    RasterTileSource.prototype.hasTile = function hasTile (tileID) {
+        return !this.tileBounds || this.tileBounds.contains(tileID.canonical);
+    };
+    RasterTileSource.prototype.loadTile = function loadTile (tile, callback) {
+        var this$1 = this;
+
+        var url = normalizeTileURL(tile.tileID.canonical.url(this.tiles, this.scheme), this.url, this.tileSize);
+        tile.request = getImage(this.map._transformRequest(url, ResourceType.Tile), function (err, img) {
+            delete tile.request;
+            if (tile.aborted) {
+                tile.state = 'unloaded';
+                callback(null);
+            } else if (err) {
+                tile.state = 'errored';
+                callback(err);
+            } else if (img) {
+                if (this$1.map._refreshExpiredTiles)
+                    { tile.setExpiryData(img); }
+                delete img.cacheControl;
+                delete img.expires;
+                var context = this$1.map.painter.context;
+                var gl = context.gl;
+                tile.texture = this$1.map.painter.getTileTexture(img.width);
+                if (tile.texture) {
+                    tile.texture.update(img, { useMipmap: true });
+                } else {
+                    tile.texture = new Texture(context, img, gl.RGBA, { useMipmap: true });
+                    tile.texture.bind(gl.LINEAR, gl.CLAMP_TO_EDGE, gl.LINEAR_MIPMAP_NEAREST);
+                    if (context.extTextureFilterAnisotropic) {
+                        gl.texParameterf(gl.TEXTURE_2D, context.extTextureFilterAnisotropic.TEXTURE_MAX_ANISOTROPY_EXT, context.extTextureFilterAnisotropicMax);
+                    }
+                }
+                tile.state = 'loaded';
+                callback(null);
+            }
+        });
+    };
+    RasterTileSource.prototype.abortTile = function abortTile (tile, callback) {
+        if (tile.request) {
+            tile.request.cancel();
+            delete tile.request;
+        }
+        callback();
+    };
+    RasterTileSource.prototype.unloadTile = function unloadTile (tile, callback) {
+        if (tile.texture)
+            { this.map.painter.saveTileTexture(tile.texture); }
+        callback();
+    };
+    RasterTileSource.prototype.hasTransition = function hasTransition () {
+        return false;
+    };
+
+    return RasterTileSource;
+}(Evented));
+
 var DEMData = function DEMData(uid, data, encoding) {
     var this$1 = this;
 
@@ -17082,6 +17264,181 @@ function shapeIcon(image, iconOffset, iconAnchor) {
     };
 }
 
+var Database = function Database () {};
+
+Database.openDatabase = function openDatabase (dbLocation) {
+    var dbName = dbLocation.split('/').slice(-1)[0];
+    var source = this;
+    if ('sqlitePlugin' in self) {
+        if ('device' in self) {
+            return new Promise(function (resolve, reject) {
+                if (device.platform === 'Android') {
+                    resolveLocalFileSystemURL(cordova.file.applicationStorageDirectory, function (dir) {
+                        dir.getDirectory('databases', { create: true }, function (subdir) {
+                            resolve(subdir);
+                        });
+                    }, reject);
+                } else if (device.platform === 'iOS') {
+                    resolveLocalFileSystemURL(cordova.file.documentsDirectory, resolve, reject);
+                } else {
+                    reject('Platform not supported');
+                }
+            }).then(function (targetDir) {
+                return new Promise(function (resolve, reject) {
+                    targetDir.getFile(dbName, {}, resolve, reject);
+                }).catch(function () {
+                    return source.copyDatabaseFile(dbLocation, dbName, targetDir);
+                });
+            }).then(function () {
+                var params = { name: dbName };
+                if (device.platform === 'iOS') {
+                    params.iosDatabaseLocation = 'Documents';
+                } else {
+                    params.location = 'default';
+                }
+                return sqlitePlugin.openDatabase(params);
+            });
+        } else {
+            return Promise.reject(new Error('cordova-plugin-device not available. ' + 'Please install the plugin and make sure this code is run after onDeviceReady event'));
+        }
+    } else {
+        return Promise.reject(new Error('cordova-sqlite-ext plugin not available. ' + 'Please install the plugin and make sure this code is run after onDeviceReady event'));
+    }
+};
+Database.copyDatabaseFile = function copyDatabaseFile (dbLocation, dbName, targetDir) {
+    console.log('Copying database to application storage directory');
+    return new Promise(function (resolve, reject) {
+        var absPath = cordova.file.applicationDirectory + 'www/' + dbLocation;
+        resolveLocalFileSystemURL(absPath, resolve, reject);
+    }).then(function (sourceFile) {
+        return new Promise(function (resolve, reject) {
+            sourceFile.copyTo(targetDir, dbName, resolve, reject);
+        }).then(function () {
+            console.log('Database copied');
+        });
+    });
+};
+
+var RasterTileSourceOffline = (function (RasterTileSource$$1) {
+    function RasterTileSourceOffline(id, options, dispatcher, eventedParent) {
+        RasterTileSource$$1.call(this, id, options, dispatcher, eventedParent);
+        this.id = id;
+        this.dispatcher = dispatcher;
+        this.setEventedParent(eventedParent);
+        this.type = 'rasteroffline';
+        this.minzoom = 0;
+        this.maxzoom = 22;
+        this.roundZoom = true;
+        this.scheme = 'xyz';
+        this.tileSize = 512;
+        this.imageFormat = 'png';
+        this._loaded = false;
+        this._options = extend({}, options);
+        extend(this, pick(options, [
+            'scheme',
+            'tileSize',
+            'imageFormat'
+        ]));
+        this._transparentPngUrl = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAAC0lEQVQYV2NgAAIAAAUAAarVyFEAAAAASUVORK5CYII=';
+        this.db = this.openDatabase(options.path);
+    }
+
+    if ( RasterTileSource$$1 ) RasterTileSourceOffline.__proto__ = RasterTileSource$$1;
+    RasterTileSourceOffline.prototype = Object.create( RasterTileSource$$1 && RasterTileSource$$1.prototype );
+    RasterTileSourceOffline.prototype.constructor = RasterTileSourceOffline;
+    RasterTileSourceOffline.prototype.openDatabase = function openDatabase (dbLocation) {
+        return Database.openDatabase(dbLocation);
+    };
+    RasterTileSourceOffline.prototype.copyDatabaseFile = function copyDatabaseFile (dbLocation, dbName, targetDir) {
+        return Database.copyDatabaseFile(dbLocation, dbName, targetDir);
+    };
+    RasterTileSourceOffline.prototype.loadTile = function loadTile (tile, callback) {
+        tile.request = this._getImage(tile.tileID.canonical, done.bind(this));
+        function done(err, img) {
+            delete tile.request;
+            if (tile.aborted) {
+                tile.state = 'unloaded';
+                callback(null);
+            } else if (err) {
+                tile.state = 'errored';
+                callback(err);
+            } else if (img) {
+                if (this.map._refreshExpiredTiles)
+                    { tile.setExpiryData(img); }
+                delete img.cacheControl;
+                delete img.expires;
+                var context = this.map.painter.context;
+                var gl = context.gl;
+                tile.texture = this.map.painter.getTileTexture(img.width);
+                if (tile.texture) {
+                    tile.texture.update(img, { useMipmap: true });
+                } else {
+                    tile.texture = new Texture(context, img, gl.RGBA, { useMipmap: true });
+                    tile.texture.bind(gl.LINEAR, gl.CLAMP_TO_EDGE, gl.LINEAR_MIPMAP_NEAREST);
+                    if (context.extTextureFilterAnisotropic) {
+                        gl.texParameterf(gl.TEXTURE_2D, context.extTextureFilterAnisotropic.TEXTURE_MAX_ANISOTROPY_EXT, context.extTextureFilterAnisotropicMax);
+                    }
+                }
+                tile.state = 'loaded';
+                callback(null);
+            }
+        }
+    };
+    RasterTileSourceOffline.prototype._getBlob = function _getBlob (coord, callback) {
+        var this$1 = this;
+
+        var coordY = Math.pow(2, coord.z) - 1 - coord.y;
+        var query = 'SELECT BASE64(tile_data) AS base64_tile_data FROM tiles WHERE zoom_level = ? AND tile_column = ? AND tile_row = ?';
+        var params = [
+            coord.z,
+            coord.x,
+            coordY
+        ];
+        var base64Prefix = 'data:image/' + this.imageFormat + ';base64,';
+        this.db.then(function (db) {
+            db.transaction(function (txn) {
+                txn.executeSql(query, params, function (tx, res) {
+                    if (res.rows.length) {
+                        callback(undefined, {
+                            data: base64Prefix + res.rows.item(0).base64_tile_data,
+                            cacheControl: null,
+                            expires: null
+                        });
+                    } else {
+                        console.error('tile ' + params.join(',') + ' not found');
+                        callback(undefined, {
+                            data: this$1._transparentPngUrl,
+                            cacheControl: null,
+                            expires: null
+                        });
+                    }
+                });
+            }, function (error) {
+                callback(error);
+            });
+        }).catch(function (err) {
+            callback(err);
+        });
+    };
+    RasterTileSourceOffline.prototype._getImage = function _getImage (coord, callback) {
+        return this._getBlob(coord, function (err, imgData) {
+            if (err)
+                { return callback(err); }
+            var img = new window.Image();
+            var URL = window.URL || window.webkitURL;
+            img.onload = function () {
+                callback(null, img);
+                URL.revokeObjectURL(img.src);
+            };
+            img.cacheControl = imgData.cacheControl;
+            img.expires = imgData.expires;
+            img.src = imgData.data;
+        });
+    };
+
+    return RasterTileSourceOffline;
+}(RasterTileSource));
+
 exports.createCommonjsModule = createCommonjsModule;
 exports.Point = pointGeometry;
 exports.window = self;
@@ -17118,18 +17475,16 @@ exports.DataConstantProperty = DataConstantProperty;
 exports.warnOnce = warnOnce;
 exports.uniqueId = uniqueId;
 exports.Actor = Actor;
-exports.pick = pick;
-exports.normalizeSourceURL = normalizeSourceURL;
-exports.canonicalizeTileset = canonicalizeTileset;
-exports.LngLatBounds = LngLatBounds;
-exports.mercatorXfromLng = mercatorXfromLng;
-exports.mercatorYfromLat = mercatorYfromLat;
 exports.Event = Event;
 exports.ErrorEvent = ErrorEvent;
+exports.pick = pick;
+exports.loadTileJSON = loadTileJSON;
 exports.normalizeTileURL = normalizeTileURL;
 exports.postTurnstileEvent = postTurnstileEvent;
 exports.postMapLoadEvent = postMapLoadEvent;
+exports.TileBounds = TileBounds;
 exports.OverscaledTileID = OverscaledTileID;
+exports.RasterTileSource = RasterTileSource;
 exports.EXTENT = EXTENT;
 exports.CanonicalTileID = CanonicalTileID;
 exports.StructArrayLayout4i8 = StructArrayLayout4i8;
@@ -17211,6 +17566,9 @@ exports.StructArrayLayout2ui4 = StructArrayLayout2ui4;
 exports.StructArrayLayout3ui6 = StructArrayLayout3ui6;
 exports.StructArrayLayout1ui2 = StructArrayLayout1ui2;
 exports.LngLat = LngLat;
+exports.LngLatBounds = LngLatBounds;
+exports.mercatorXfromLng = mercatorXfromLng;
+exports.mercatorYfromLat = mercatorYfromLat;
 exports.mercatorZfromAltitude = mercatorZfromAltitude;
 exports.wrap = wrap;
 exports.UnwrappedTileID = UnwrappedTileID;
@@ -17223,6 +17581,8 @@ exports.EvaluationParameters = EvaluationParameters;
 exports.webpSupported = exported$1;
 exports.version = version;
 exports.setRTLTextPlugin = setRTLTextPlugin;
+exports.Database = Database;
+exports.RasterTileSourceOffline = RasterTileSourceOffline;
 exports.values = values;
 exports.featureFilter = createFilter;
 exports.Anchor = Anchor;
@@ -20378,7 +20738,8 @@ var Worker$1 = function Worker(self) {
     this.workerSourceTypes = {
         vector: VectorTileWorkerSource,
         mbtiles: VectorTileWorkerSource,
-        geojson: GeoJSONWorkerSource
+        geojson: GeoJSONWorkerSource,
+        rasteroffline: __chunk_1.RasterTileSourceOffline
     };
     this.workerSources = {};
     this.demWorkerSources = {};
@@ -21424,70 +21785,6 @@ Dispatcher.prototype.remove = function remove () {
 };
 Dispatcher.Actor = __chunk_1.Actor;
 
-function loadTileJSON (options, requestTransformFn, callback) {
-    var loaded = function (err, tileJSON) {
-        if (err) {
-            return callback(err);
-        } else if (tileJSON) {
-            var result = __chunk_1.pick(tileJSON, [
-                'tiles',
-                'minzoom',
-                'maxzoom',
-                'attribution',
-                'mapbox_logo',
-                'bounds'
-            ]);
-            if (tileJSON.vector_layers) {
-                result.vectorLayers = tileJSON.vector_layers;
-                result.vectorLayerIds = result.vectorLayers.map(function (layer) {
-                    return layer.id;
-                });
-            }
-            if (options.url) {
-                result.tiles = __chunk_1.canonicalizeTileset(result, options.url);
-            }
-            callback(null, result);
-        }
-    };
-    if (options.url) {
-        return __chunk_1.getJSON(requestTransformFn(__chunk_1.normalizeSourceURL(options.url), __chunk_1.ResourceType.Source), loaded);
-    } else {
-        return __chunk_1.browser.frame(function () { return loaded(null, options); });
-    }
-}
-
-var TileBounds = function TileBounds(bounds, minzoom, maxzoom) {
-    this.bounds = __chunk_1.LngLatBounds.convert(this.validateBounds(bounds));
-    this.minzoom = minzoom || 0;
-    this.maxzoom = maxzoom || 24;
-};
-TileBounds.prototype.validateBounds = function validateBounds (bounds) {
-    if (!Array.isArray(bounds) || bounds.length !== 4)
-        { return [
-            -180,
-            -90,
-            180,
-            90
-        ]; }
-    return [
-        Math.max(-180, bounds[0]),
-        Math.max(-90, bounds[1]),
-        Math.min(180, bounds[2]),
-        Math.min(90, bounds[3])
-    ];
-};
-TileBounds.prototype.contains = function contains (tileID) {
-    var worldSize = Math.pow(2, tileID.z);
-    var level = {
-        minX: Math.floor(__chunk_1.mercatorXfromLng(this.bounds.getWest()) * worldSize),
-        minY: Math.floor(__chunk_1.mercatorYfromLat(this.bounds.getNorth()) * worldSize),
-        maxX: Math.ceil(__chunk_1.mercatorXfromLng(this.bounds.getEast()) * worldSize),
-        maxY: Math.ceil(__chunk_1.mercatorYfromLat(this.bounds.getSouth()) * worldSize)
-    };
-    var hit = tileID.x >= level.minX && tileID.x < level.maxX && tileID.y >= level.minY && tileID.y < level.maxY;
-    return hit;
-};
-
 var VectorTileSource = (function (Evented) {
     function VectorTileSource(id, options, dispatcher, eventedParent) {
         Evented.call(this);
@@ -21520,14 +21817,14 @@ var VectorTileSource = (function (Evented) {
         var this$1 = this;
 
         this.fire(new __chunk_1.Event('dataloading', { dataType: 'source' }));
-        this._tileJSONRequest = loadTileJSON(this._options, this.map._transformRequest, function (err, tileJSON) {
+        this._tileJSONRequest = __chunk_1.loadTileJSON(this._options, this.map._transformRequest, function (err, tileJSON) {
             this$1._tileJSONRequest = null;
             if (err) {
                 this$1.fire(new __chunk_1.ErrorEvent(err));
             } else if (tileJSON) {
                 __chunk_1.extend(this$1, tileJSON);
                 if (tileJSON.bounds)
-                    { this$1.tileBounds = new TileBounds(tileJSON.bounds, this$1.minzoom, this$1.maxzoom); }
+                    { this$1.tileBounds = new __chunk_1.TileBounds(tileJSON.bounds, this$1.minzoom, this$1.maxzoom); }
                 __chunk_1.postTurnstileEvent(tileJSON.tiles);
                 __chunk_1.postMapLoadEvent(tileJSON.tiles, this$1.map._getMapId());
                 this$1.fire(new __chunk_1.Event('data', {
@@ -21618,135 +21915,17 @@ var VectorTileSource = (function (Evented) {
     return VectorTileSource;
 }(__chunk_1.Evented));
 
-var RasterTileSource = (function (Evented) {
-    function RasterTileSource(id, options, dispatcher, eventedParent) {
-        Evented.call(this);
-        this.id = id;
-        this.dispatcher = dispatcher;
-        this.setEventedParent(eventedParent);
-        this.type = 'raster';
-        this.minzoom = 0;
-        this.maxzoom = 22;
-        this.roundZoom = true;
-        this.scheme = 'xyz';
-        this.tileSize = 512;
-        this._loaded = false;
-        this._options = __chunk_1.extend({}, options);
-        __chunk_1.extend(this, __chunk_1.pick(options, [
-            'url',
-            'scheme',
-            'tileSize'
-        ]));
-    }
-
-    if ( Evented ) RasterTileSource.__proto__ = Evented;
-    RasterTileSource.prototype = Object.create( Evented && Evented.prototype );
-    RasterTileSource.prototype.constructor = RasterTileSource;
-    RasterTileSource.prototype.load = function load () {
-        var this$1 = this;
-
-        this.fire(new __chunk_1.Event('dataloading', { dataType: 'source' }));
-        this._tileJSONRequest = loadTileJSON(this._options, this.map._transformRequest, function (err, tileJSON) {
-            this$1._tileJSONRequest = null;
-            if (err) {
-                this$1.fire(new __chunk_1.ErrorEvent(err));
-            } else if (tileJSON) {
-                __chunk_1.extend(this$1, tileJSON);
-                if (tileJSON.bounds)
-                    { this$1.tileBounds = new TileBounds(tileJSON.bounds, this$1.minzoom, this$1.maxzoom); }
-                __chunk_1.postTurnstileEvent(tileJSON.tiles);
-                __chunk_1.postMapLoadEvent(tileJSON.tiles, this$1.map._getMapId());
-                this$1.fire(new __chunk_1.Event('data', {
-                    dataType: 'source',
-                    sourceDataType: 'metadata'
-                }));
-                this$1.fire(new __chunk_1.Event('data', {
-                    dataType: 'source',
-                    sourceDataType: 'content'
-                }));
-            }
-        });
-    };
-    RasterTileSource.prototype.onAdd = function onAdd (map) {
-        this.map = map;
-        this.load();
-    };
-    RasterTileSource.prototype.onRemove = function onRemove () {
-        if (this._tileJSONRequest) {
-            this._tileJSONRequest.cancel();
-            this._tileJSONRequest = null;
-        }
-    };
-    RasterTileSource.prototype.serialize = function serialize () {
-        return __chunk_1.extend({}, this._options);
-    };
-    RasterTileSource.prototype.hasTile = function hasTile (tileID) {
-        return !this.tileBounds || this.tileBounds.contains(tileID.canonical);
-    };
-    RasterTileSource.prototype.loadTile = function loadTile (tile, callback) {
-        var this$1 = this;
-
-        var url = __chunk_1.normalizeTileURL(tile.tileID.canonical.url(this.tiles, this.scheme), this.url, this.tileSize);
-        tile.request = __chunk_1.getImage(this.map._transformRequest(url, __chunk_1.ResourceType.Tile), function (err, img) {
-            delete tile.request;
-            if (tile.aborted) {
-                tile.state = 'unloaded';
-                callback(null);
-            } else if (err) {
-                tile.state = 'errored';
-                callback(err);
-            } else if (img) {
-                if (this$1.map._refreshExpiredTiles)
-                    { tile.setExpiryData(img); }
-                delete img.cacheControl;
-                delete img.expires;
-                var context = this$1.map.painter.context;
-                var gl = context.gl;
-                tile.texture = this$1.map.painter.getTileTexture(img.width);
-                if (tile.texture) {
-                    tile.texture.update(img, { useMipmap: true });
-                } else {
-                    tile.texture = new __chunk_1.Texture(context, img, gl.RGBA, { useMipmap: true });
-                    tile.texture.bind(gl.LINEAR, gl.CLAMP_TO_EDGE, gl.LINEAR_MIPMAP_NEAREST);
-                    if (context.extTextureFilterAnisotropic) {
-                        gl.texParameterf(gl.TEXTURE_2D, context.extTextureFilterAnisotropic.TEXTURE_MAX_ANISOTROPY_EXT, context.extTextureFilterAnisotropicMax);
-                    }
-                }
-                tile.state = 'loaded';
-                callback(null);
-            }
-        });
-    };
-    RasterTileSource.prototype.abortTile = function abortTile (tile, callback) {
-        if (tile.request) {
-            tile.request.cancel();
-            delete tile.request;
-        }
-        callback();
-    };
-    RasterTileSource.prototype.unloadTile = function unloadTile (tile, callback) {
-        if (tile.texture)
-            { this.map.painter.saveTileTexture(tile.texture); }
-        callback();
-    };
-    RasterTileSource.prototype.hasTransition = function hasTransition () {
-        return false;
-    };
-
-    return RasterTileSource;
-}(__chunk_1.Evented));
-
-var RasterDEMTileSource = (function (RasterTileSource$$1) {
+var RasterDEMTileSource = (function (RasterTileSource) {
     function RasterDEMTileSource(id, options, dispatcher, eventedParent) {
-        RasterTileSource$$1.call(this, id, options, dispatcher, eventedParent);
+        RasterTileSource.call(this, id, options, dispatcher, eventedParent);
         this.type = 'raster-dem';
         this.maxzoom = 22;
         this._options = __chunk_1.extend({}, options);
         this.encoding = options.encoding || 'mapbox';
     }
 
-    if ( RasterTileSource$$1 ) RasterDEMTileSource.__proto__ = RasterTileSource$$1;
-    RasterDEMTileSource.prototype = Object.create( RasterTileSource$$1 && RasterTileSource$$1.prototype );
+    if ( RasterTileSource ) RasterDEMTileSource.__proto__ = RasterTileSource;
+    RasterDEMTileSource.prototype = Object.create( RasterTileSource && RasterTileSource.prototype );
     RasterDEMTileSource.prototype.constructor = RasterDEMTileSource;
     RasterDEMTileSource.prototype.serialize = function serialize () {
         return {
@@ -21841,7 +22020,7 @@ var RasterDEMTileSource = (function (RasterTileSource$$1) {
     };
 
     return RasterDEMTileSource;
-}(RasterTileSource));
+}(__chunk_1.RasterTileSource));
 
 var GeoJSONSource = (function (Evented) {
     function GeoJSONSource(id, options, dispatcher, eventedParent) {
@@ -22411,7 +22590,7 @@ var CanvasSource = (function (ImageSource$$1) {
 
 var sourceTypes = {
     vector: VectorTileSource,
-    raster: RasterTileSource,
+    raster: __chunk_1.RasterTileSource,
     'raster-dem': RasterDEMTileSource,
     geojson: GeoJSONSource,
     video: VideoSource,
@@ -39189,56 +39368,10 @@ var MBTilesSource = (function (VectorTileSource$$1) {
     MBTilesSource.prototype = Object.create( VectorTileSource$$1 && VectorTileSource$$1.prototype );
     MBTilesSource.prototype.constructor = MBTilesSource;
     MBTilesSource.prototype.openDatabase = function openDatabase (dbLocation) {
-        var dbName = dbLocation.split('/').slice(-1)[0];
-        var source = this;
-        if ('sqlitePlugin' in self) {
-            if ('device' in self) {
-                return new Promise(function (resolve, reject) {
-                    if (device.platform === 'Android') {
-                        resolveLocalFileSystemURL(cordova.file.applicationStorageDirectory, function (dir) {
-                            dir.getDirectory('databases', { create: true }, function (subdir) {
-                                resolve(subdir);
-                            });
-                        }, reject);
-                    } else if (device.platform === 'iOS') {
-                        resolveLocalFileSystemURL(cordova.file.documentsDirectory, resolve, reject);
-                    } else {
-                        reject('Platform not supported');
-                    }
-                }).then(function (targetDir) {
-                    return new Promise(function (resolve, reject) {
-                        targetDir.getFile(dbName, {}, resolve, reject);
-                    }).catch(function () {
-                        return source.copyDatabaseFile(dbLocation, dbName, targetDir);
-                    });
-                }).then(function () {
-                    var params = { name: dbName };
-                    if (device.platform === 'iOS') {
-                        params.iosDatabaseLocation = 'Documents';
-                    } else {
-                        params.location = 'default';
-                    }
-                    return sqlitePlugin.openDatabase(params);
-                });
-            } else {
-                return Promise.reject(new Error('cordova-plugin-device not available. ' + 'Please install the plugin and make sure this code is run after onDeviceReady event'));
-            }
-        } else {
-            return Promise.reject(new Error('cordova-sqlite-ext plugin not available. ' + 'Please install the plugin and make sure this code is run after onDeviceReady event'));
-        }
+        return __chunk_1.Database.openDatabase(dbLocation);
     };
     MBTilesSource.prototype.copyDatabaseFile = function copyDatabaseFile (dbLocation, dbName, targetDir) {
-        console.log('Copying database to application storage directory');
-        return new Promise(function (resolve, reject) {
-            var absPath = cordova.file.applicationDirectory + 'www/' + dbLocation;
-            resolveLocalFileSystemURL(absPath, resolve, reject);
-        }).then(function (sourceFile) {
-            return new Promise(function (resolve, reject) {
-                sourceFile.copyTo(targetDir, dbName, resolve, reject);
-            }).then(function () {
-                console.log('Database copied');
-            });
-        });
+        return __chunk_1.Database.copyDatabaseFile(dbLocation, dbName, targetDir);
     };
     MBTilesSource.prototype.readTile = function readTile (z, x, y, callback) {
         var query = 'SELECT BASE64(tile_data) AS base64_tile_data FROM tiles WHERE zoom_level=? AND tile_column=? AND tile_row=?';
@@ -39363,7 +39496,18 @@ var createEmptyMap = function (options) { return new Promise(function (resolve) 
     });
     var emptyMapOptions = __chunk_1.extend({}, options, { style: emptyMapStyle });
     var map = new Map(emptyMapOptions);
-    map.once('load', function () { return map.addSourceType('mbtiles', MBTilesSource, function () { return resolve(map); }); });
+    map.once('load', function () {
+        var mbTilesSourceLoaded = new Promise(function (resolve) {
+            map.addSourceType('mbtiles', MBTilesSource, function () { return resolve(); });
+        });
+        var rasterOfflineSourceLoaded = new Promise(function (resolve) {
+            map.addSourceType('rasteroffline', __chunk_1.RasterTileSourceOffline, function () { return resolve(); });
+        });
+        Promise.all([
+            mbTilesSourceLoaded,
+            rasterOfflineSourceLoaded
+        ]).then(function () { return resolve(map); });
+    });
 }); };
 var loadSources = function (style) { return function (map) {
     Object.keys(style.sources).map(function (sourceName) { return map.addSource(sourceName, style.sources[sourceName]); });
