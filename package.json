@@ -1,6 +1,6 @@
 {
   "name": "mapbox-gl-cordova-offline",
-  "version": "0.2.0",
+  "version": "0.2.1",
   "description": "Offline vector maps in Cordova using Mapbox GL JS",
   "main": "www/mapbox-gl-cordova-offline.js",
   "scripts": {
