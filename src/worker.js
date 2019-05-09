@@ -5,6 +5,7 @@ import Actor from 'mapbox-gl/src/util/actor';
 import StyleLayerIndex from 'mapbox-gl/src/style/style_layer_index';
 import VectorTileWorkerSource from 'mapbox-gl/src/source/vector_tile_worker_source';
 import RasterDEMTileWorkerSource from 'mapbox-gl/src/source/raster_dem_tile_worker_source';
+import RasterTileSourceOffline from './raster_tile_offline_source';
 import GeoJSONWorkerSource from 'mapbox-gl/src/source/geojson_worker_source';
 import assert from 'assert';
 import { plugin as globalRTLTextPlugin } from 'mapbox-gl/src/source/rtl_text_plugin';
@@ -43,7 +44,8 @@ export default class Worker {
         this.workerSourceTypes = {
             vector: VectorTileWorkerSource,
             mbtiles: VectorTileWorkerSource,
-            geojson: GeoJSONWorkerSource
+            geojson: GeoJSONWorkerSource,
+            rasteroffline: RasterTileSourceOffline
         };
 
         // [mapId][sourceType][sourceName] => worker source instance

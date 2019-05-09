@@ -3,6 +3,7 @@
 'use strict';
 
 import MBTilesSource from './mbtiles_source'
+import RasterTileSourceOffline from "./raster_tile_offline_source"
 import Map from 'mapbox-gl/src/ui/map'
 import {extend} from 'mapbox-gl/src/util/util'
 import window from 'mapbox-gl/src/util/window'
@@ -56,7 +57,16 @@ const createEmptyMap = (options) => new Promise((resolve) => {
     });
     const emptyMapOptions = extend({}, options, {style: emptyMapStyle});
     const map = new Map(emptyMapOptions);
-    map.once('load', () => map.addSourceType('mbtiles', MBTilesSource, () => resolve(map)));
+    map.once('load', () => {
+        let mbTilesSourceLoaded = new Promise((resolve) => {
+            map.addSourceType('mbtiles', MBTilesSource, () => resolve())
+        })
+        let rasterOfflineSourceLoaded = new Promise((resolve) => {
+            map.addSourceType('rasteroffline', RasterTileSourceOffline, () => resolve())
+        })
+
+        Promise.all([mbTilesSourceLoaded, rasterOfflineSourceLoaded]).then(() => resolve(map))
+    });
 });
 
 const loadSources = (style) => (map) => {

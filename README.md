@@ -27,7 +27,7 @@ as style, both coming from the OpenMapTiles project: https://openmaptiles.org/
 
 ## Integrate in your application
 
-Use the bundled library from `www/mapbox-gl-cordova-offline.js` which is based in mapbox-gl-js v.0.44.0, or install it
+Use the bundled library from `www/mapbox-gl-cordova-offline.js` which is based in mapbox-gl-js v.0.53.1, or install it
 as npm dependency (`npm install oscarfonts/mapbox-gl-cordova-offline`).
 
 Add the following cordova plugins via "cordova plugin add" command:
@@ -35,7 +35,6 @@ Add the following cordova plugins via "cordova plugin add" command:
     * "cordova-plugin-device"
     * "cordova-plugin-file"
     * "cordova-sqlite-ext"
-
 
 Use the OfflineMap constructor. It returns a **promise** instead of a map, as the
 offline map creation process is asynchronous:
@@ -69,6 +68,54 @@ and the location to the mbtiles file as a relative path:
 Additional styles can be found in OpenMapTiles repos (see gh-pages branches): https://github.com/openmaptiles
 Vector tiles for other regions can be downloaded here: https://openmaptiles.com/downloads/planet/
 
+#### Raster tiles
+
+You can add raster tiles in offline mode. In the style you have to add a new source with type `rasteroffline` with the 
+relative path:
+
+```json
+"sources": {
+    "hillshading": {
+        "type": "rasteroffline",
+        "path": "data/2016-11-28-hillshade-spain_barcelona.mbtiles"
+    }
+}
+```
+
+The style related to this source will be the same that a common Mapbox raster layer. You have to relate the layer with
+the source using the source name, and the type of the layer have to be `raster` as a common raster Mapbox layer.
+
+```json
+{
+      "id": "hillshading",
+      "type": "raster",
+      "source": "hillshading",
+      "layout": {
+        "visibility": "visible"
+      },
+      "paint": {
+        "raster-opacity": {
+          "base": 0.5,
+          "stops": [
+            [
+              3,
+              0
+            ],
+            [
+              5,
+              0.5
+            ],
+            [
+              12,
+              0.5
+            ]
+          ]
+        },
+        "raster-fade-duration": 300,
+        "raster-contrast": 0
+      }
+    }
+```
 
 ### Offline sprites (icon set) 
 
