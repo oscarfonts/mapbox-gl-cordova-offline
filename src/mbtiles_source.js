@@ -72,13 +72,14 @@ class MBTilesSource extends VectorTileSource {
                 showCollisionBoxes: this.map.showCollisionBoxes
             };
 
-            if (!tile.workerID || tile.state === 'expired') {
-                tile.workerID = this.dispatcher.send('loadTile', params, done.bind(this));
+            if (!tile.actor || tile.state === 'expired') {
+                tile.actor = this.dispatcher.getActor();
+                tile.request = tile.actor.send('loadTile', params, done.bind(this));
             } else if (tile.state === 'loading') {
                 // schedule tile reloading after it has been loaded
                 tile.reloadCallback = callback;
             } else {
-                this.dispatcher.send('reloadTile', params, done.bind(this), tile.workerID);
+                tile.request = tile.actor.send('reloadTile', params, done.bind(this));
             }
 
             function done(err, data) {
